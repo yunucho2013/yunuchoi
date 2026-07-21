@@ -41,31 +41,37 @@ def main(page: ft.Page):
 
     selected_file_text = ft.Text("선택된 파일 없음", size=12, color="#888888")
 
-    # 웹 표준 파일 업로드 콜백 함수
-    def on_file_selected(e: ft.FilePickerResultEvent):
+    # 파일 선택 결과 처리 함수
+    def handle_picker_result(e: ft.FilePickerResultEvent):
         nonlocal selected_image_bytes
         if e.files and len(e.files) > 0:
             file = e.files[0]
             selected_file_text.value = f"📄 {file.name}"
             
-            # 웹 브라우저 바이트 추출
             if hasattr(file, "bytes") and file.bytes:
                 selected_image_bytes = file.bytes
-            
+            elif file.path:
+                try:
+                    with open(file.path, "rb") as f:
+                        selected_image_bytes = f.read()
+                except Exception:
+                    pass
+
             if selected_image_bytes:
                 base64_img = base64.b64encode(selected_image_bytes).decode('utf-8')
                 img_preview.src_base64 = base64_img
                 img_preview.src = None
             page.update()
 
-    # FilePicker 생성 및 page.overlay 추가
-    fp = ft.FilePicker(on_result=on_file_selected)
-    page.overlay.append(fp)
+    # ⭐ 핵심 수정 포인트: FilePicker 괄호 안을 완전히 비워두고, 속성을 따로 부여합니다!
+    file_picker = ft.FilePicker()
+    file_picker.on_result = handle_picker_result
+    page.overlay.append(file_picker)
 
     btn_pick_file = ft.OutlinedButton(
         "📷 사진 선택",
         icon="photo_library",
-        on_click=lambda _: fp.pick_files(
+        on_click=lambda _: file_picker.pick_files(
             allow_multiple=False,
             allowed_extensions=["jpg", "jpeg", "png", "webp"]
         ),
@@ -75,7 +81,7 @@ def main(page: ft.Page):
         )
     )
 
-    # 스캔 결과 표기
+    # 스캔 결과/진행 표기
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
 
@@ -93,7 +99,7 @@ def main(page: ft.Page):
         width=360,
     )
 
-    # AI 분석 로직
+    # Gemini 분석 로직
     def analyze_face(e):
         nonlocal selected_image_bytes
 
@@ -172,7 +178,6 @@ def main(page: ft.Page):
         width=360,
     )
 
-    # 레이아웃 구성
     page.add(
         ft.Column([
             header_title,
