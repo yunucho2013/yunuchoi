@@ -1,21 +1,22 @@
 import flet as ft
+import base64
 from google import genai
 from google.genai import types
 
 def main(page: ft.Page):
     # 📱 기본 화면 설정 (라이트 / 화이트 테마)
     page.title = "외모 점수 측정 앱"
-    page.window_icon = "app_icon.png"
     page.window_width = 420
     page.window_height = 850
-    page.bgcolor = "#ffffff"  # 완전한 화이트
+    page.bgcolor = "#ffffff"
     page.theme_mode = "light"
     page.scroll = "adaptive"
 
-    selected_file_path = None
+    selected_image_bytes = None
+    selected_file_name = None
 
     # ==========================================
-    #  UI 헤더 (화이트 & 블랙)
+    # UI 헤더
     # ==========================================
     header_title = ft.Text("외모 점수 측정 앱", size=24, weight="bold", color="#000000")
     header_sub = ft.Text("개성/분위기 제외. 오직 이목구비와 비율만 평가합니다.", size=12, color="#666666")
@@ -45,23 +46,38 @@ def main(page: ft.Page):
 
     selected_file_text = ft.Text("선택된 파일 없음", size=12, color="#888888")
 
-    # 파일 선택 함수 (최신 비동기 방식)
-    async def pick_files_click(e):
-        nonlocal selected_file_path
-        files = await ft.FilePicker().pick_files(
-            allow_multiple=False,
-            allowed_extensions=["jpg", "jpeg", "png", "webp"]
-        )
-        if files and len(files) > 0:
-            selected_file_path = files[0].path
-            selected_file_text.value = f"📄 {files[0].name}"
-            img_preview.src = selected_file_path
+    # 웹 환경에 맞춘 FilePicker 핸들러
+    def on_file_result(e: ft.FilePickerResultEvent):
+        nonlocal selected_image_bytes, selected_file_name
+        if e.files and len(e.files) > 0:
+            file = e.files[0]
+            selected_file_name = file.name
+            selected_file_text.value = f"📄 {file.name}"
+            
+            # 웹용 FilePicker upload / bytes 처리
+            if file.path:
+                with open(file.path, "rb") as f:
+                    selected_image_bytes = f.read()
+            elif hasattr(file, "bytes") and file.bytes:
+                selected_image_bytes = file.bytes
+
+            if selected_image_bytes:
+                # Base64로 변환하여 미리보기 이미지 src 지정 (웹에서 Image must have src 에러 완벽 방지)
+                base64_img = base64.b64encode(selected_image_bytes).decode('utf-8')
+                img_preview.src_base64 = base64_img
+                img_preview.src = None
             page.update()
+
+    file_picker = ft.FilePicker(on_result=on_file_result)
+    page.overlay.append(file_picker)
 
     btn_pick_file = ft.OutlinedButton(
         "📷 사진 선택",
         icon="photo_library",
-        on_click=pick_files_click,
+        on_click=lambda _: file_picker.pick_files(
+            allow_multiple=False,
+            allowed_extensions=["jpg", "jpeg", "png", "webp"]
+        ),
         style=ft.ButtonStyle(
             color="#000000",
             side=ft.BorderSide(1, "#000000"),
@@ -74,7 +90,6 @@ def main(page: ft.Page):
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
 
-    # AI 결과 카드 (화이트 배경 + 블랙 테두리)
     result_card = ft.Container(
         content=ft.Column([
             ft.Text("📊 AI 외모 평가 결과", size=18, weight="bold", color="#000000"),
@@ -90,18 +105,18 @@ def main(page: ft.Page):
     )
 
     # ==========================================
-    # Gemini AI 로직 (100% 면상/이목구비 전용 독설 프롬프트)
+    # Gemini AI 분석 로직
     # ==========================================
     def analyze_face(e):
-        nonlocal selected_file_path
-        
+        nonlocal selected_image_bytes
+
         if not api_key_input.value:
             status_text.value = "⚠️ Gemini API Key를 입력해주세요!"
             status_text.color = "#d32f2f"
             page.update()
             return
 
-        if not selected_file_path:
+        if not selected_image_bytes:
             status_text.value = "⚠️ 분석할 사진을 먼저 선택해주세요!"
             status_text.color = "#d32f2f"
             page.update()
@@ -115,9 +130,6 @@ def main(page: ft.Page):
         page.update()
 
         try:
-            with open(selected_file_path, "rb") as f:
-                image_bytes = f.read()
-
             client = genai.Client(api_key=api_key_input.value)
 
             prompt = """
@@ -139,7 +151,7 @@ def main(page: ft.Page):
                 model="gemini-2.5-flash",
                 contents=[
                     types.Part.from_bytes(
-                        data=image_bytes,
+                        data=selected_image_bytes,
                         mime_type="image/jpeg",
                     ),
                     prompt,
@@ -164,7 +176,6 @@ def main(page: ft.Page):
             progress_ring.visible = False
             page.update()
 
-    # 블랙 버튼 + 흰색 글씨
     btn_scan = ft.ElevatedButton(
         "AI 스캔 시작",
         on_click=analyze_face,
@@ -175,7 +186,7 @@ def main(page: ft.Page):
     )
 
     # ==========================================
-    # 메인 레이아웃 통합
+    # 메인 레이아웃
     # ==========================================
     page.add(
         ft.Column([
@@ -195,5 +206,4 @@ def main(page: ft.Page):
         ], horizontal_alignment="center", spacing=10)
     )
 
-# 기존 코드 대신 아래 코드로 교체!
 ft.app(target=main, view=ft.AppView.WEB_BROWSER, assets_dir="assets")
