@@ -41,7 +41,7 @@ def main(page: ft.Page):
 
     selected_file_text = ft.Text("선택된 파일 없음", size=12, color="#888888")
 
-    # 파일 선택 결과 처리 함수
+    # 파일 선택 결과 처리
     def handle_picker_result(e: ft.FilePickerResultEvent):
         nonlocal selected_image_bytes
         if e.files and len(e.files) > 0:
@@ -63,7 +63,7 @@ def main(page: ft.Page):
                 img_preview.src = None
             page.update()
 
-    # ⭐ 핵심 수정 포인트: FilePicker 괄호 안을 완전히 비워두고, 속성을 따로 부여합니다!
+    # 안전하게 FilePicker 선언 및 등록
     file_picker = ft.FilePicker()
     file_picker.on_result = handle_picker_result
     page.overlay.append(file_picker)
