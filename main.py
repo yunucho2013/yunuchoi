@@ -14,9 +14,7 @@ def main(page: ft.Page):
 
     selected_image_bytes = None
 
-    # ==========================================
     # UI 헤더
-    # ==========================================
     header_title = ft.Text("외모 점수 측정 앱", size=24, weight="bold", color="#000000")
     header_sub = ft.Text("개성/분위기 제외. 오직 이목구비와 비율만 평가합니다.", size=12, color="#666666")
 
@@ -32,9 +30,7 @@ def main(page: ft.Page):
         color="#000000"
     )
 
-    # ==========================================
-    # 이미지 업로드 및 FilePicker 설정
-    # ==========================================
+    # 이미지 업로드 영역
     img_preview = ft.Image(
         src="https://via.placeholder.com/300x300/f0f0f0/000000?text=No+Image",
         width=250,
@@ -45,14 +41,14 @@ def main(page: ft.Page):
 
     selected_file_text = ft.Text("선택된 파일 없음", size=12, color="#888888")
 
-    # 웹에 최적화된 파일 선택 핸들러
-    def on_file_result(e: ft.FilePickerResultEvent):
+    # 웹에서 파일 선택 결과 처리 함수
+    def handle_picker_result(e: ft.FilePickerResultEvent):
         nonlocal selected_image_bytes
         if e.files and len(e.files) > 0:
             file = e.files[0]
             selected_file_text.value = f"📄 {file.name}"
             
-            # 웹 전용: bytes 데이터 가져오기
+            # 웹에서 파일 데이터 가져오기
             if hasattr(file, "bytes") and file.bytes:
                 selected_image_bytes = file.bytes
             elif file.path:
@@ -68,8 +64,10 @@ def main(page: ft.Page):
                 img_preview.src = None
             page.update()
 
-    file_picker = ft.FilePicker(on_result=on_file_result)
-    page.overlay.append(file_picker) # 레이아웃이 아닌 overlay에만 탑재
+    # FilePicker 정의 (overlay에 등록)
+    file_picker = ft.FilePicker()
+    file_picker.on_result = handle_picker_result
+    page.overlay.append(file_picker)
 
     btn_pick_file = ft.OutlinedButton(
         "📷 사진 선택",
@@ -84,9 +82,7 @@ def main(page: ft.Page):
         )
     )
 
-    # ==========================================
-    # AI 스캔 및 결과 영역
-    # ==========================================
+    # 스캔 결과/진행 표기
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
 
@@ -104,9 +100,7 @@ def main(page: ft.Page):
         width=360,
     )
 
-    # ==========================================
-    # Gemini AI 분석 로직
-    # ==========================================
+    # Gemini 분석 로직
     def analyze_face(e):
         nonlocal selected_image_bytes
 
@@ -185,9 +179,6 @@ def main(page: ft.Page):
         width=360,
     )
 
-    # ==========================================
-    # 메인 레이아웃 (FilePicker는 여기에 절대 넣지 않음!)
-    # ==========================================
     page.add(
         ft.Column([
             header_title,
