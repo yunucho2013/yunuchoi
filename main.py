@@ -84,6 +84,7 @@ def main(page: ft.Page):
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
 
+    # ⭐ 핵심 수정: ft.Border.all -> ft.border.all (소문자로 변경하여 에러 해결!)
     result_card = ft.Container(
         content=ft.Column([
             ft.Text("📊 AI 외모 평가 결과", size=18, weight="bold", color="#000000"),
@@ -92,7 +93,7 @@ def main(page: ft.Page):
         ]),
         padding=20,
         bgcolor="#f9f9f9",
-        border=ft.Border.all(1, "#000000"),
+        border=ft.border.all(1, "#000000"),
         border_radius=10,
         visible=False,
         width=360,
