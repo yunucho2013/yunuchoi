@@ -196,4 +196,4 @@ def main(page: ft.Page):
     )
 
 # 기존 코드 대신 아래 코드로 교체!
-ft.app(target=main, port=8550, view=ft.AppView.WEB_BROWSER, assets_dir="assets")
+ft.app(target=main, view=ft.AppView.WEB_BROWSER, assets_dir="assets")
