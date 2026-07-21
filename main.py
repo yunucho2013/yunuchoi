@@ -39,17 +39,17 @@ def main(page: ft.Page):
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
 
-    # 파일 선택 및 바이트 데이터 가져오기 (가장 확실한 웹 호환 처리)
+    # ⭐ 웹 바이너리 문제 해결: FilePicker 웹 이벤트를 완벽 지원하도록 수정
     def handle_picker_result(e: ft.FilePickerResultEvent):
         nonlocal selected_image_bytes
         if e.files and len(e.files) > 0:
             file = e.files[0]
             selected_file_text.value = f"📄 {file.name}"
-            
-            # 브라우저에서 바이트 데이터 읽기 시도
-            if hasattr(file, "bytes") and file.bytes:
-                selected_image_bytes = file.bytes
-            elif file.path:
+
+            # 웹 환경에서 브라우저가 전달해준 바이너리가 있는지 확인
+            if file.bytes is not None:
+                selected_image_bytes = bytes(file.bytes)
+            elif hasattr(file, "path") and file.path:
                 try:
                     with open(file.path, "rb") as f:
                         selected_image_bytes = f.read()
@@ -63,17 +63,19 @@ def main(page: ft.Page):
                 status_text.value = "✅ 이미지 로드 완료!"
                 status_text.color = "#2e7d32"
             else:
-                # 업로드 URL 방식으로 자동 변환 시도
+                # Flet Web에서 FilePicker.upload 호출하여 웹 업로드 강제 수행
                 upload_url = page.get_upload_url(file.name, 600)
                 if upload_url:
                     file_picker.upload([ft.FilePickerUploadFile(file.name, upload_url=upload_url)])
+                status_text.value = "⚠️ 사진 데이터를 읽는 중입니다..."
+                status_text.color = "#1976d2"
 
             page.update()
 
     def handle_upload_progress(e: ft.FilePickerUploadEvent):
         nonlocal selected_image_bytes
         if e.progress == 1.0:
-            status_text.value = "✅ 파일 전송 완료!"
+            status_text.value = "✅ 이미지 전송 완료!"
             status_text.color = "#2e7d32"
             page.update()
 
@@ -87,7 +89,8 @@ def main(page: ft.Page):
         icon="photo_library",
         on_click=lambda _: file_picker.pick_files(
             allow_multiple=False,
-            allowed_extensions=["jpg", "jpeg", "png", "webp"]
+            allowed_extensions=["jpg", "jpeg", "png", "webp"],
+            with_data=True  # ⭐ 핵심! 파일 데이터를 직접 넘기도록 설정!
         ),
         style=ft.ButtonStyle(
             color="#000000",
