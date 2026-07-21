@@ -4,6 +4,7 @@ from google import genai
 from google.genai import types
 
 def main(page: ft.Page):
+    # 📱 기본 화면 설정
     page.title = "외모 점수 측정 앱"
     page.window_width = 420
     page.window_height = 850
@@ -13,9 +14,11 @@ def main(page: ft.Page):
 
     selected_image_bytes = None
 
+    # UI 헤더
     header_title = ft.Text("외모 점수 측정 앱", size=24, weight="bold", color="#000000")
     header_sub = ft.Text("개성/분위기 제외. 오직 이목구비와 비율만 평가합니다.", size=12, color="#666666")
 
+    # API Key 입력창
     api_key_input = ft.TextField(
         label="🔑 Gemini API Key 입력",
         hint_text="API 키를 입력하세요",
@@ -27,38 +30,45 @@ def main(page: ft.Page):
         color="#000000"
     )
 
+    # 이미지 URL 입력창 (웹 호환성 100% 보장)
+    img_url_input = ft.TextField(
+        label="🖼️ 이미지 URL (주소) 입력",
+        hint_text="https://... 이미지 주소를 넣어주세요",
+        border_color="#000000",
+        focused_border_color="#000000",
+        label_style=ft.TextStyle(color="#555555"),
+        color="#000000"
+    )
+
+    # 이미지 미리보기
     img_preview = ft.Image(
-        src="https://via.placeholder.com/300x300/f0f0f0/000000?text=No+Image",
+        src="https://via.placeholder.com/300x300/f0f0f0/000000?text=Preview",
         width=250,
         height=250,
         fit="cover",
         border_radius=10,
     )
 
-    selected_file_text = ft.Text("선택된 파일 없음", size=12, color="#888888")
-    progress_ring = ft.ProgressRing(visible=False, color="#000000")
-    status_text = ft.Text("", size=14, color="#000000", weight="bold")
+    selected_file_text = ft.Text("파일을 고르거나 아래에 이미지 URL을 넣어주세요", size=12, color="#888888")
 
-    # 웹에서 100% 안전하게 동작하는 이벤트 처리
+    # 파일 선택 이벤트 (FilePicker)
     def handle_picker_result(e: ft.FilePickerResultEvent):
         nonlocal selected_image_bytes
         if e.files and len(e.files) > 0:
             file = e.files[0]
-            selected_file_text.value = f"📄 {file.name}"
+            selected_file_text.value = f"📄 선택됨: {file.name}"
             
-            # 웹 브라우저 바이너리 안전 추출
-            if hasattr(file, "bytes") and file.bytes is not None:
+            # 브라우저에서 바이트 읽어오기 시도
+            if hasattr(file, "bytes") and file.bytes:
                 selected_image_bytes = bytes(file.bytes)
-            
-            if selected_image_bytes:
                 base64_img = base64.b64encode(selected_image_bytes).decode('utf-8')
                 img_preview.src_base64 = base64_img
                 img_preview.src = None
                 status_text.value = "✅ 이미지 로드 완료!"
                 status_text.color = "#2e7d32"
             else:
-                status_text.value = "⚠️ 이미지를 불러오는 중입니다. 잠시 후 스캔 버튼을 눌러주세요."
-                status_text.color = "#1976d2"
+                status_text.value = "⚠️ 웹 파일 읽기 실패. 위에 이미지 URL 주소를 직접 입력해보세요!"
+                status_text.color = "#d32f2f"
 
             page.update()
 
@@ -66,22 +76,35 @@ def main(page: ft.Page):
     file_picker.on_result = handle_picker_result
     page.overlay.append(file_picker)
 
-    # ⭐ 먹통을 유발하던 with_data 옵션을 제거하고 가장 기본적이고 안전하게 호출합니다.
-    def open_picker(e):
-        file_picker.pick_files(
+    btn_pick_file = ft.OutlinedButton(
+        "📷 사진 선택 (내 컴퓨터/폰)",
+        icon="photo_library",
+        on_click=lambda _: file_picker.pick_files(
             allow_multiple=False,
             allowed_extensions=["jpg", "jpeg", "png", "webp"]
-        )
-
-    btn_pick_file = ft.OutlinedButton(
-        "📷 사진 선택",
-        icon="photo_library",
-        on_click=open_picker,
+        ),
         style=ft.ButtonStyle(
             color="#000000",
             side=ft.BorderSide(1, "#000000"),
         )
     )
+
+    # URL 적용 버튼
+    def apply_url_image(e):
+        nonlocal selected_image_bytes
+        if img_url_input.value:
+            img_preview.src = img_url_input.value
+            img_preview.src_base64 = None
+            selected_image_bytes = None  # URL 모드로 전환
+            status_text.value = "✅ URL 이미지 적용 완료!"
+            status_text.color = "#2e7d32"
+            page.update()
+
+    btn_apply_url = ft.TextButton("URL 이미지 적용", on_click=apply_url_image)
+
+    # 스캔 결과/진행 표기
+    progress_ring = ft.ProgressRing(visible=False, color="#000000")
+    status_text = ft.Text("", size=14, color="#000000", weight="bold")
 
     result_card = ft.Container(
         content=ft.Column([
@@ -97,6 +120,7 @@ def main(page: ft.Page):
         width=360,
     )
 
+    # Gemini 분석 로직
     def analyze_face(e):
         nonlocal selected_image_bytes
 
@@ -106,8 +130,9 @@ def main(page: ft.Page):
             page.update()
             return
 
-        if not selected_image_bytes:
-            status_text.value = "⚠️ 분석할 사진을 먼저 선택해주세요!"
+        # 이미지 검증 (바이트 또는 URL 둘 중 하나는 있어야 함)
+        if not selected_image_bytes and not img_url_input.value:
+            status_text.value = "⚠️ 분석할 사진을 선택하거나 URL을 입력해주세요!"
             status_text.color = "#d32f2f"
             page.update()
             return
@@ -137,15 +162,24 @@ def main(page: ft.Page):
             4. [가장 심각한 감점 요인]: (눈, 코, 입, 비율 중 가장 점수를 깎아먹은 부위)
             """
 
+            # 바이트 데이터가 있으면 바이트 전달, 없으면 URL에서 가져오기
+            if selected_image_bytes:
+                content_part = types.Part.from_bytes(
+                    data=selected_image_bytes,
+                    mime_type="image/jpeg",
+                )
+            else:
+                import urllib.request
+                req = urllib.request.urlopen(img_url_input.value)
+                image_data = req.read()
+                content_part = types.Part.from_bytes(
+                    data=image_data,
+                    mime_type="image/jpeg",
+                )
+
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
-                contents=[
-                    types.Part.from_bytes(
-                        data=selected_image_bytes,
-                        mime_type="image/jpeg",
-                    ),
-                    prompt,
-                ]
+                contents=[content_part, prompt]
             )
 
             result_card.content = ft.Column([
@@ -185,6 +219,7 @@ def main(page: ft.Page):
             img_preview,
             selected_file_text,
             btn_pick_file,
+            ft.Row([img_url_input, btn_apply_url], alignment="center"),
             ft.Container(height=10),
             btn_scan,
             progress_ring,
