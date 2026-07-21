@@ -64,7 +64,7 @@ def main(page: ft.Page):
                 img_preview.src = None
             page.update()
 
-    # FilePicker 정의 (overlay에 등록)
+    # FilePicker 생성 (괄호 안에 on_result를 절대 넣지 않음!)
     file_picker = ft.FilePicker()
     file_picker.on_result = handle_picker_result
     page.overlay.append(file_picker)
