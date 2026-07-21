@@ -33,7 +33,7 @@ def main(page: ft.Page):
     )
 
     # ==========================================
-    # 이미지 업로드 영역
+    # 이미지 업로드 및 FilePicker 설정
     # ==========================================
     img_preview = ft.Image(
         src="https://via.placeholder.com/300x300/f0f0f0/000000?text=No+Image",
@@ -45,34 +45,31 @@ def main(page: ft.Page):
 
     selected_file_text = ft.Text("선택된 파일 없음", size=12, color="#888888")
 
-    # FilePicker 생성 및 콜백 등록 (에러 안 나는 안전한 방식)
-    file_picker = ft.FilePicker()
-    page.overlay.append(file_picker)
-
-    async def on_file_result(e: ft.FilePickerResultEvent):
+    # 웹에 최적화된 파일 선택 핸들러
+    def on_file_result(e: ft.FilePickerResultEvent):
         nonlocal selected_image_bytes
         if e.files and len(e.files) > 0:
             file = e.files[0]
             selected_file_text.value = f"📄 {file.name}"
             
-            # 파일 데이터 읽기
-            if file.path:
+            # 웹 전용: bytes 데이터 가져오기
+            if hasattr(file, "bytes") and file.bytes:
+                selected_image_bytes = file.bytes
+            elif file.path:
                 try:
                     with open(file.path, "rb") as f:
                         selected_image_bytes = f.read()
                 except Exception:
                     pass
-            
-            if not selected_image_bytes and hasattr(file, "bytes") and file.bytes:
-                selected_image_bytes = file.bytes
 
             if selected_image_bytes:
-                # Base64 이미지 변환
                 base64_img = base64.b64encode(selected_image_bytes).decode('utf-8')
                 img_preview.src_base64 = base64_img
+                img_preview.src = None
             page.update()
 
-    file_picker.on_result = on_file_result
+    file_picker = ft.FilePicker(on_result=on_file_result)
+    page.overlay.append(file_picker) # 레이아웃이 아닌 overlay에만 탑재
 
     btn_pick_file = ft.OutlinedButton(
         "📷 사진 선택",
@@ -88,7 +85,7 @@ def main(page: ft.Page):
     )
 
     # ==========================================
-    # AI 스캔 및 결과 표시 영역
+    # AI 스캔 및 결과 영역
     # ==========================================
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
@@ -189,7 +186,7 @@ def main(page: ft.Page):
     )
 
     # ==========================================
-    # 메인 레이아웃
+    # 메인 레이아웃 (FilePicker는 여기에 절대 넣지 않음!)
     # ==========================================
     page.add(
         ft.Column([
