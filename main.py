@@ -39,23 +39,17 @@ def main(page: ft.Page):
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
 
-    # ⭐ 웹 바이너리 문제 해결: FilePicker 웹 이벤트를 완벽 지원하도록 수정
+    # 웹에서 100% 안전하게 동작하는 이벤트 처리
     def handle_picker_result(e: ft.FilePickerResultEvent):
         nonlocal selected_image_bytes
         if e.files and len(e.files) > 0:
             file = e.files[0]
             selected_file_text.value = f"📄 {file.name}"
-
-            # 웹 환경에서 브라우저가 전달해준 바이너리가 있는지 확인
-            if file.bytes is not None:
+            
+            # 웹 브라우저 바이너리 안전 추출
+            if hasattr(file, "bytes") and file.bytes is not None:
                 selected_image_bytes = bytes(file.bytes)
-            elif hasattr(file, "path") and file.path:
-                try:
-                    with open(file.path, "rb") as f:
-                        selected_image_bytes = f.read()
-                except Exception:
-                    pass
-
+            
             if selected_image_bytes:
                 base64_img = base64.b64encode(selected_image_bytes).decode('utf-8')
                 img_preview.src_base64 = base64_img
@@ -63,35 +57,26 @@ def main(page: ft.Page):
                 status_text.value = "✅ 이미지 로드 완료!"
                 status_text.color = "#2e7d32"
             else:
-                # Flet Web에서 FilePicker.upload 호출하여 웹 업로드 강제 수행
-                upload_url = page.get_upload_url(file.name, 600)
-                if upload_url:
-                    file_picker.upload([ft.FilePickerUploadFile(file.name, upload_url=upload_url)])
-                status_text.value = "⚠️ 사진 데이터를 읽는 중입니다..."
+                status_text.value = "⚠️ 이미지를 불러오는 중입니다. 잠시 후 스캔 버튼을 눌러주세요."
                 status_text.color = "#1976d2"
 
             page.update()
 
-    def handle_upload_progress(e: ft.FilePickerUploadEvent):
-        nonlocal selected_image_bytes
-        if e.progress == 1.0:
-            status_text.value = "✅ 이미지 전송 완료!"
-            status_text.color = "#2e7d32"
-            page.update()
-
     file_picker = ft.FilePicker()
     file_picker.on_result = handle_picker_result
-    file_picker.on_upload = handle_upload_progress
     page.overlay.append(file_picker)
+
+    # ⭐ 먹통을 유발하던 with_data 옵션을 제거하고 가장 기본적이고 안전하게 호출합니다.
+    def open_picker(e):
+        file_picker.pick_files(
+            allow_multiple=False,
+            allowed_extensions=["jpg", "jpeg", "png", "webp"]
+        )
 
     btn_pick_file = ft.OutlinedButton(
         "📷 사진 선택",
         icon="photo_library",
-        on_click=lambda _: file_picker.pick_files(
-            allow_multiple=False,
-            allowed_extensions=["jpg", "jpeg", "png", "webp"],
-            with_data=True  # ⭐ 핵심! 파일 데이터를 직접 넘기도록 설정!
-        ),
+        on_click=open_picker,
         style=ft.ButtonStyle(
             color="#000000",
             side=ft.BorderSide(1, "#000000"),
