@@ -4,7 +4,6 @@ from google import genai
 from google.genai import types
 
 def main(page: ft.Page):
-    # 📱 기본 화면 설정
     page.title = "외모 점수 측정 앱"
     page.window_width = 420
     page.window_height = 850
@@ -14,11 +13,9 @@ def main(page: ft.Page):
 
     selected_image_bytes = None
 
-    # UI 헤더
     header_title = ft.Text("외모 점수 측정 앱", size=24, weight="bold", color="#000000")
     header_sub = ft.Text("개성/분위기 제외. 오직 이목구비와 비율만 평가합니다.", size=12, color="#666666")
 
-    # API Key 입력창
     api_key_input = ft.TextField(
         label="🔑 Gemini API Key 입력",
         hint_text="API 키를 입력하세요",
@@ -30,7 +27,6 @@ def main(page: ft.Page):
         color="#000000"
     )
 
-    # 이미지 업로드 영역
     img_preview = ft.Image(
         src="https://via.placeholder.com/300x300/f0f0f0/000000?text=No+Image",
         width=250,
@@ -40,14 +36,17 @@ def main(page: ft.Page):
     )
 
     selected_file_text = ft.Text("선택된 파일 없음", size=12, color="#888888")
+    progress_ring = ft.ProgressRing(visible=False, color="#000000")
+    status_text = ft.Text("", size=14, color="#000000", weight="bold")
 
-    # 파일 선택 결과 처리
+    # 파일 선택 및 바이트 데이터 가져오기 (가장 확실한 웹 호환 처리)
     def handle_picker_result(e: ft.FilePickerResultEvent):
         nonlocal selected_image_bytes
         if e.files and len(e.files) > 0:
             file = e.files[0]
             selected_file_text.value = f"📄 {file.name}"
             
+            # 브라우저에서 바이트 데이터 읽기 시도
             if hasattr(file, "bytes") and file.bytes:
                 selected_image_bytes = file.bytes
             elif file.path:
@@ -61,10 +60,26 @@ def main(page: ft.Page):
                 base64_img = base64.b64encode(selected_image_bytes).decode('utf-8')
                 img_preview.src_base64 = base64_img
                 img_preview.src = None
+                status_text.value = "✅ 이미지 로드 완료!"
+                status_text.color = "#2e7d32"
+            else:
+                # 업로드 URL 방식으로 자동 변환 시도
+                upload_url = page.get_upload_url(file.name, 600)
+                if upload_url:
+                    file_picker.upload([ft.FilePickerUploadFile(file.name, upload_url=upload_url)])
+
+            page.update()
+
+    def handle_upload_progress(e: ft.FilePickerUploadEvent):
+        nonlocal selected_image_bytes
+        if e.progress == 1.0:
+            status_text.value = "✅ 파일 전송 완료!"
+            status_text.color = "#2e7d32"
             page.update()
 
     file_picker = ft.FilePicker()
     file_picker.on_result = handle_picker_result
+    file_picker.on_upload = handle_upload_progress
     page.overlay.append(file_picker)
 
     btn_pick_file = ft.OutlinedButton(
@@ -80,11 +95,6 @@ def main(page: ft.Page):
         )
     )
 
-    # 스캔 결과/진행 표기
-    progress_ring = ft.ProgressRing(visible=False, color="#000000")
-    status_text = ft.Text("", size=14, color="#000000", weight="bold")
-
-    # ⭐ 핵심 수정: ft.Border.all -> ft.border.all (소문자로 변경하여 에러 해결!)
     result_card = ft.Container(
         content=ft.Column([
             ft.Text("📊 AI 외모 평가 결과", size=18, weight="bold", color="#000000"),
@@ -99,7 +109,6 @@ def main(page: ft.Page):
         width=360,
     )
 
-    # Gemini 분석 로직
     def analyze_face(e):
         nonlocal selected_image_bytes
 
