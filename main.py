@@ -14,9 +14,7 @@ def main(page: ft.Page):
 
     selected_image_bytes = None
 
-    # ==========================================
     # UI 헤더
-    # ==========================================
     header_title = ft.Text("외모 점수 측정 앱", size=24, weight="bold", color="#000000")
     header_sub = ft.Text("개성/분위기 제외. 오직 이목구비와 비율만 평가합니다.", size=12, color="#666666")
 
@@ -32,9 +30,7 @@ def main(page: ft.Page):
         color="#000000"
     )
 
-    # ==========================================
     # 이미지 업로드 영역
-    # ==========================================
     img_preview = ft.Image(
         src="https://via.placeholder.com/300x300/f0f0f0/000000?text=No+Image",
         width=250,
@@ -45,40 +41,31 @@ def main(page: ft.Page):
 
     selected_file_text = ft.Text("선택된 파일 없음", size=12, color="#888888")
 
-    # 웹 충돌을 방지하는 안전한 FilePicker 핸들러
-    def on_upload_result(e: ft.FilePickerResultEvent):
+    # 웹 표준 파일 업로드 콜백 함수
+    def on_file_selected(e: ft.FilePickerResultEvent):
         nonlocal selected_image_bytes
         if e.files and len(e.files) > 0:
             file = e.files[0]
             selected_file_text.value = f"📄 {file.name}"
             
+            # 웹 브라우저 바이트 추출
             if hasattr(file, "bytes") and file.bytes:
                 selected_image_bytes = file.bytes
-            elif file.path:
-                try:
-                    with open(file.path, "rb") as f:
-                        selected_image_bytes = f.read()
-                except Exception:
-                    pass
-
+            
             if selected_image_bytes:
                 base64_img = base64.b64encode(selected_image_bytes).decode('utf-8')
                 img_preview.src_base64 = base64_img
                 img_preview.src = None
             page.update()
 
-    # overlay에 동적으로 등록하여 Unknown control 에러 방지
-    file_picker = ft.FilePicker()
-    file_picker.on_result = on_upload_result
-    
-    # 렌더링 초기화 시 overlay 등록
-    if file_picker not in page.overlay:
-        page.overlay.append(file_picker)
+    # FilePicker 생성 및 page.overlay 추가
+    fp = ft.FilePicker(on_result=on_file_selected)
+    page.overlay.append(fp)
 
     btn_pick_file = ft.OutlinedButton(
         "📷 사진 선택",
         icon="photo_library",
-        on_click=lambda _: file_picker.pick_files(
+        on_click=lambda _: fp.pick_files(
             allow_multiple=False,
             allowed_extensions=["jpg", "jpeg", "png", "webp"]
         ),
@@ -88,9 +75,7 @@ def main(page: ft.Page):
         )
     )
 
-    # ==========================================
-    # AI 스캔 및 결과 표시 영역
-    # ==========================================
+    # 스캔 결과 표기
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
 
@@ -108,9 +93,7 @@ def main(page: ft.Page):
         width=360,
     )
 
-    # ==========================================
-    # Gemini AI 분석 로직
-    # ==========================================
+    # AI 분석 로직
     def analyze_face(e):
         nonlocal selected_image_bytes
 
@@ -189,9 +172,7 @@ def main(page: ft.Page):
         width=360,
     )
 
-    # ==========================================
-    # 메인 레이아웃
-    # ==========================================
+    # 레이아웃 구성
     page.add(
         ft.Column([
             header_title,
