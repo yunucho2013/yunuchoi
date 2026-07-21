@@ -4,7 +4,7 @@ from google import genai
 from google.genai import types
 
 def main(page: ft.Page):
-    # 📱 기본 화면 설정 (라이트 / 화이트 테마)
+    # 📱 기본 화면 설정
     page.title = "외모 점수 측정 앱"
     page.window_width = 420
     page.window_height = 850
@@ -13,7 +13,6 @@ def main(page: ft.Page):
     page.scroll = "adaptive"
 
     selected_image_bytes = None
-    selected_file_name = None
 
     # ==========================================
     # UI 헤더
@@ -46,30 +45,34 @@ def main(page: ft.Page):
 
     selected_file_text = ft.Text("선택된 파일 없음", size=12, color="#888888")
 
-    # 웹 환경에 맞춘 FilePicker 핸들러
-    def on_file_result(e: ft.FilePickerResultEvent):
-        nonlocal selected_image_bytes, selected_file_name
+    # FilePicker 생성 및 콜백 등록 (에러 안 나는 안전한 방식)
+    file_picker = ft.FilePicker()
+    page.overlay.append(file_picker)
+
+    async def on_file_result(e: ft.FilePickerResultEvent):
+        nonlocal selected_image_bytes
         if e.files and len(e.files) > 0:
             file = e.files[0]
-            selected_file_name = file.name
             selected_file_text.value = f"📄 {file.name}"
             
-            # 웹용 FilePicker upload / bytes 처리
+            # 파일 데이터 읽기
             if file.path:
-                with open(file.path, "rb") as f:
-                    selected_image_bytes = f.read()
-            elif hasattr(file, "bytes") and file.bytes:
+                try:
+                    with open(file.path, "rb") as f:
+                        selected_image_bytes = f.read()
+                except Exception:
+                    pass
+            
+            if not selected_image_bytes and hasattr(file, "bytes") and file.bytes:
                 selected_image_bytes = file.bytes
 
             if selected_image_bytes:
-                # Base64로 변환하여 미리보기 이미지 src 지정 (웹에서 Image must have src 에러 완벽 방지)
+                # Base64 이미지 변환
                 base64_img = base64.b64encode(selected_image_bytes).decode('utf-8')
                 img_preview.src_base64 = base64_img
-                img_preview.src = None
             page.update()
 
-    file_picker = ft.FilePicker(on_result=on_file_result)
-    page.overlay.append(file_picker)
+    file_picker.on_result = on_file_result
 
     btn_pick_file = ft.OutlinedButton(
         "📷 사진 선택",
