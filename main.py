@@ -63,7 +63,6 @@ def main(page: ft.Page):
                 img_preview.src = None
             page.update()
 
-    # 안전하게 FilePicker 선언 및 등록
     file_picker = ft.FilePicker()
     file_picker.on_result = handle_picker_result
     page.overlay.append(file_picker)
