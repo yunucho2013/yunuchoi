@@ -46,7 +46,7 @@ def main(page: ft.Page):
         if e.files and len(e.files) > 0:
             file_info = e.files[0]
             try:
-                # 웹 및 로컬 환경 파일 읽기
+                # 파일 읽기
                 if file_info.path:
                     with open(file_info.path, "rb") as f:
                         raw_bytes = f.read()
@@ -74,9 +74,12 @@ def main(page: ft.Page):
                 status_text.color = "#d32f2f"
             page.update()
 
-    # 정석 FilePicker 객체 생성
-    file_picker = ft.FilePicker(on_result=on_file_picked)
-    # 웹 환경 핵심: page.overlay에 등록해야만 에러 없이 정상 팝업이 작동함!
+    # 안전하게 FilePicker 생성 후 핸들러 바인딩 (버전 충돌 방지)
+    file_picker = ft.FilePicker()
+    file_picker.on_result = on_file_picked
+    file_picker.on_select = on_file_picked  # 최신 버전을 위한 이중 바인딩
+    
+    # 웹 페이지 overlay 등록 (Unknown control 에러 방지)
     page.overlay.append(file_picker)
 
     btn_pick_file = ft.ElevatedButton(
