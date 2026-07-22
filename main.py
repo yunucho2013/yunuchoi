@@ -40,7 +40,7 @@ def main(page: ft.Page):
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
 
-    # 갤러리 파일 처리 (Pillow 압축 처리)
+    # 갤러리 파일 처리 (Pillow 안전 압축)
     def handle_picker_result(e: ft.FilePickerResultEvent):
         nonlocal selected_image_bytes
         if e.files and len(e.files) > 0:
@@ -114,7 +114,7 @@ def main(page: ft.Page):
 
     btn_apply_url = ft.OutlinedButton("URL 적용", on_click=apply_url_image)
 
-    # ⭐ 문법 에러 수정 부분 (border.all -> Border.all)
+    # ⭐ 버전 충돌 방지: border 객체 대신 안전한 형태로 구성
     result_card = ft.Container(
         content=ft.Column([
             ft.Text("📊 AI 외모 평가 결과", size=18, weight="bold", color="#000000"),
@@ -122,8 +122,7 @@ def main(page: ft.Page):
             ft.Text("사진을 선택하고 분석 시작하기.", size=14, color="#666666")
         ]),
         padding=20,
-        bgcolor="#f9f9f9",
-        border=ft.Border.all(1, "#000000"),
+        bgcolor="#f0f0f0",
         border_radius=10,
         visible=False,
         width=360,
