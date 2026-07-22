@@ -90,32 +90,33 @@ def main(page: ft.Page):
     # 숨겨진 데이터 전달 수신기
     data_receiver = ft.TextField(visible=False, on_change=on_image_uploaded)
 
-    # 📷 갤러리 창 열기 함수 (동기 방식 안전 처리)
+    # 📷 page.launch_url 안전 호출 방식으로 갤러리 열기
     def open_web_gallery(e):
-        js_script = """
-        var input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'image/*';
-        input.onchange = function(evt) {
-            var file = evt.target.files[0];
-            if (!file) return;
-            var reader = new FileReader();
-            reader.onload = function(e_reader) {
-                var inputs = document.querySelectorAll('input');
-                for (var i = 0; i < inputs.length; i++) {
-                    if (inputs[i].style.display === 'none' || inputs[i].type === 'hidden') {
-                        var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-                        nativeSetter.call(inputs[i], e_reader.target.result);
-                        inputs[i].dispatchEvent(new Event('input', { bubbles: true }));
-                        break;
-                    }
-                }
-            };
-            reader.readAsDataURL(file);
-        };
-        input.click();
-        """
-        page.run_javascript(js_script)
+        js_code = (
+            "javascript:(function(){"
+            "var input=document.createElement('input');"
+            "input.type='file';"
+            "input.accept='image/*';"
+            "input.onchange=function(evt){"
+            "var file=evt.target.files[0];if(!file)return;"
+            "var reader=new FileReader();"
+            "reader.onload=function(e_reader){"
+            "var inputs=document.querySelectorAll('input');"
+            "for(var i=0;i<inputs.length;i++){"
+            "if(inputs[i].style.display==='none'||inputs[i].type==='hidden'){"
+            "var nativeSetter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;"
+            "nativeSetter.call(inputs[i],e_reader.target.result);"
+            "inputs[i].dispatchEvent(new Event('input',{bubbles:true}));"
+            "break;"
+            "}"
+            "}"
+            "};"
+            "reader.readAsDataURL(file);"
+            "};"
+            "input.click();"
+            "})()"
+        )
+        page.launch_url(js_code)
 
     btn_pick_file = ft.ElevatedButton(
         "📷 갤러리에서 사진 선택",
