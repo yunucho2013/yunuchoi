@@ -40,53 +40,7 @@ def main(page: ft.Page):
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
 
-    # 🔥 안전한 FilePicker 예외 처리 방식
-    def handle_picker_result(e: ft.FilePickerResultEvent):
-        nonlocal selected_image_bytes
-        if e.files and len(e.files) > 0:
-            file = e.files[0]
-            raw_data = getattr(file, "bytes", None)
-            
-            if raw_data:
-                try:
-                    img = Image.open(io.BytesIO(raw_data))
-                    img.thumbnail((800, 800))
-                    
-                    buffer = io.BytesIO()
-                    img.convert("RGB").save(buffer, format="JPEG", quality=85)
-                    selected_image_bytes = buffer.getvalue()
-
-                    base64_img = base64.b64encode(selected_image_bytes).decode('utf-8')
-                    img_preview.src_base64 = base64_img
-                    img_preview.src = None
-                    status_text.value = f"✅ 갤러리 사진('{file.name}') 로드 완료!"
-                    status_text.color = "#2e7d32"
-                except Exception as img_err:
-                    status_text.value = f"⚠️ 이미지 변환 오류: {str(img_err)}"
-                    status_text.color = "#d32f2f"
-            else:
-                status_text.value = "⚠️ 브라우저 데이터 차단됨. 아래 URL 주소를 활용해주세요!"
-                status_text.color = "#d32f2f"
-
-            page.update()
-
-    file_picker = ft.FilePicker()
-    file_picker.on_result = handle_picker_result
-
-    btn_pick_file = ft.ElevatedButton(
-        "📷 갤러리에서 사진 선택",
-        icon="photo_library",
-        on_click=lambda _: file_picker.pick_files(
-            allow_multiple=False,
-            allowed_extensions=["jpg", "jpeg", "png", "webp"],
-            with_data=True
-        ),
-        bgcolor="#000000",
-        color="#ffffff",
-        width=360,
-        height=45
-    )
-
+    # URL 입력창
     img_url_input = ft.TextField(
         label="🖼️ 이미지 URL 주소",
         hint_text="https://...",
@@ -109,6 +63,74 @@ def main(page: ft.Page):
 
     btn_apply_url = ft.OutlinedButton("URL 적용", on_click=apply_url_image)
 
+    # Base64 이미지 데이터 수신 함수 (웹 안전 방식)
+    def on_image_uploaded(e):
+        nonlocal selected_image_bytes
+        if e.data:
+            try:
+                # Base64 파싱 및 이미지 최적화
+                b64_data = e.data.split(",")[-1] if "," in e.data else e.data
+                raw_bytes = base64.b64decode(b64_data)
+                
+                img = Image.open(io.BytesIO(raw_bytes))
+                img.thumbnail((800, 800))
+                
+                buffer = io.BytesIO()
+                img.convert("RGB").save(buffer, format="JPEG", quality=85)
+                selected_image_bytes = buffer.getvalue()
+
+                img_preview.src_base64 = base64.b64encode(selected_image_bytes).decode('utf-8')
+                img_preview.src = None
+                status_text.value = "✅ 갤러리 이미지 선택 완료!"
+                status_text.color = "#2e7d32"
+            except Exception as err:
+                status_text.value = f"⚠️ 파일 변환 실패: {str(err)}"
+                status_text.color = "#d32f2f"
+            page.update()
+
+    # 숨겨진 데이터 수신기
+    data_receiver = ft.TextField(visible=False, on_change=on_image_uploaded)
+
+    # 📷 갤러리 버튼 (FilePicker 단어를 쓰지 않고 웹 순수 API 호출)
+    btn_pick_file = ft.ElevatedButton(
+        "📷 갤러리에서 사진 선택",
+        icon="photo_library",
+        on_click=lambda _: page.run_task(open_web_gallery),
+        bgcolor="#000000",
+        color="#ffffff",
+        width=360,
+        height=45
+    )
+
+    async def open_web_gallery():
+        # 브라우저 native 파일 창 오픈 JavaScript
+        js = """
+        (function() {
+            let input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.onchange = function(e) {
+                let file = e.target.files[0];
+                if (!file) return;
+                let reader = new FileReader();
+                reader.onload = function(evt) {
+                    let inputs = document.querySelectorAll('input');
+                    for (let inp of inputs) {
+                        if (inp.style.display === 'none' || inp.type === 'hidden') {
+                            let setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+                            setter.call(inp, evt.target.result);
+                            inp.dispatchEvent(new Event('input', { bubbles: true }));
+                            break;
+                        }
+                    }
+                };
+                reader.readAsDataURL(file);
+            };
+            input.click();
+        })();
+        """
+        await page.run_javascript_async(js)
+
     result_card = ft.Container(
         content=ft.Column([
             ft.Text("📊 AI 외모 평가 결과", size=18, weight="bold", color="#000000"),
@@ -122,6 +144,7 @@ def main(page: ft.Page):
         width=360,
     )
 
+    # Gemini 분석
     def analyze_face(e):
         nonlocal selected_image_bytes
 
@@ -132,7 +155,7 @@ def main(page: ft.Page):
             return
 
         if not selected_image_bytes and not img_url_input.value:
-            status_text.value = "⚠️ 사진을 선택하거나 URL을 입력해주세요!"
+            status_text.value = "⚠️ 갤러리 사진을 고르거나 URL을 입력해주세요!"
             status_text.color = "#d32f2f"
             page.update()
             return
@@ -212,7 +235,7 @@ def main(page: ft.Page):
     )
 
     page.add(
-        file_picker, # ⭐ overlay 대신 page 최상단 컨트롤 트리로 정석 추가!
+        data_receiver,
         ft.Column([
             header_title,
             header_sub,
