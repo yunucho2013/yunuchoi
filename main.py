@@ -40,7 +40,7 @@ def main(page: ft.Page):
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
 
-    # 갤러리 파일 처리 (Pillow 안전 압축)
+    # 갤러리 파일 선택기 처리
     def handle_picker_result(e: ft.FilePickerResultEvent):
         nonlocal selected_image_bytes
         if e.files and len(e.files) > 0:
@@ -68,14 +68,13 @@ def main(page: ft.Page):
                     status_text.value = f"⚠️ 이미지 변환 오류: {str(img_err)}"
                     status_text.color = "#d32f2f"
             else:
-                status_text.value = "⚠️ 브라우저가 파일 데이터를 전달하지 못했습니다. 아래 URL로 시도해보세요!"
+                status_text.value = "⚠️ 브라우저가 파일 데이터를 전달하지 못했습니다. 아래 URL을 사용해보세요!"
                 status_text.color = "#d32f2f"
 
             page.update()
 
-    file_picker = ft.FilePicker()
-    file_picker.on_result = handle_picker_result
-    page.overlay.append(file_picker)
+    # FilePicker를 overlay 대신 메인 컨트롤 리스트에 안전하게 등록
+    file_picker = ft.FilePicker(on_result=handle_picker_result)
 
     btn_pick_file = ft.ElevatedButton(
         "📷 갤러리에서 사진 선택",
@@ -114,7 +113,6 @@ def main(page: ft.Page):
 
     btn_apply_url = ft.OutlinedButton("URL 적용", on_click=apply_url_image)
 
-    # ⭐ 버전 충돌 방지: border 객체 대신 안전한 형태로 구성
     result_card = ft.Container(
         content=ft.Column([
             ft.Text("📊 AI 외모 평가 결과", size=18, weight="bold", color="#000000"),
@@ -218,7 +216,9 @@ def main(page: ft.Page):
         width=360,
     )
 
+    # 화면 구성 (file_picker를 직접 등록)
     page.add(
+        file_picker,
         ft.Column([
             header_title,
             header_sub,
