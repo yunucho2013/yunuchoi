@@ -40,16 +40,18 @@ def main(page: ft.Page):
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
 
-    # 웹 호환 FilePicker (오류 방지 핸들링)
+    # 갤러리 파일 선택기 결과 처리
     def handle_picker_result(e: ft.FilePickerResultEvent):
         nonlocal selected_image_bytes
         if e.files and len(e.files) > 0:
             file = e.files[0]
             
-            # 웹 브라우저에서 읽어온 파일 데이터 검증
+            raw_data = None
             if hasattr(file, "bytes") and file.bytes:
+                raw_data = bytes(file.bytes)
+            
+            if raw_data:
                 try:
-                    raw_data = bytes(file.bytes)
                     img = Image.open(io.BytesIO(raw_data))
                     img.thumbnail((800, 800))
                     
@@ -60,18 +62,21 @@ def main(page: ft.Page):
                     base64_img = base64.b64encode(selected_image_bytes).decode('utf-8')
                     img_preview.src_base64 = base64_img
                     img_preview.src = None
-                    status_text.value = f"✅ 사진('{file.name}') 준비 완료!"
+                    status_text.value = f"✅ 갤러리 사진('{file.name}') 로드 성공!"
                     status_text.color = "#2e7d32"
                 except Exception as img_err:
                     status_text.value = f"⚠️ 이미지 변환 오류: {str(img_err)}"
                     status_text.color = "#d32f2f"
             else:
-                status_text.value = "⚠️ 브라우저 보안으로 갤러리 읽기가 차단되었습니다. 아래 URL 방식을 이용해주세요!"
+                status_text.value = "⚠️ 브라우저 보안으로 파일 읽기가 차단되었습니다. 아래 URL 주소를 이용해 주세요!"
                 status_text.color = "#d32f2f"
 
             page.update()
 
-    file_picker = ft.FilePicker(on_result=handle_picker_result)
+    # ⭐ 버전 오류 방지: 기본 생성 후 이벤트 따로 할당
+    file_picker = ft.FilePicker()
+    file_picker.on_result = handle_picker_result
+    page.overlay.append(file_picker)
 
     btn_pick_file = ft.ElevatedButton(
         "📷 갤러리에서 사진 선택",
@@ -87,7 +92,7 @@ def main(page: ft.Page):
         height=45
     )
 
-    # URL 입력 영역
+    # URL 보조 입력 영역
     img_url_input = ft.TextField(
         label="🖼️ 이미지 URL 주소",
         hint_text="https://...",
@@ -134,7 +139,7 @@ def main(page: ft.Page):
             return
 
         if not selected_image_bytes and not img_url_input.value:
-            status_text.value = "⚠️ 분석할 사진을 갤러리에서 고르거나 URL을 넣으세요!"
+            status_text.value = "⚠️ 분석할 사진을 갤러리에서 고르거나 URL을 입력해 주세요!"
             status_text.color = "#d32f2f"
             page.update()
             return
@@ -212,9 +217,6 @@ def main(page: ft.Page):
         height=50,
         width=360,
     )
-
-    # page.services를 활용해 overlay 오류 없이 등록
-    page.services.append(file_picker) if hasattr(page, "services") else page.overlay.append(file_picker)
 
     page.add(
         ft.Column([
