@@ -63,12 +63,11 @@ def main(page: ft.Page):
 
     btn_apply_url = ft.OutlinedButton("URL 적용", on_click=apply_url_image)
 
-    # Base64 이미지 데이터 수신 함수 (웹 안전 방식)
+    # 갤러리 이미지 Base64 수신 이벤트
     def on_image_uploaded(e):
         nonlocal selected_image_bytes
         if e.data:
             try:
-                # Base64 파싱 및 이미지 최적화
                 b64_data = e.data.split(",")[-1] if "," in e.data else e.data
                 raw_bytes = base64.b64decode(b64_data)
                 
@@ -88,48 +87,45 @@ def main(page: ft.Page):
                 status_text.color = "#d32f2f"
             page.update()
 
-    # 숨겨진 데이터 수신기
+    # 숨겨진 데이터 전달 수신기
     data_receiver = ft.TextField(visible=False, on_change=on_image_uploaded)
 
-    # 📷 갤러리 버튼 (FilePicker 단어를 쓰지 않고 웹 순수 API 호출)
+    # 📷 갤러리 창 열기 함수 (동기 방식 안전 처리)
+    def open_web_gallery(e):
+        js_script = """
+        var input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = function(evt) {
+            var file = evt.target.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function(e_reader) {
+                var inputs = document.querySelectorAll('input');
+                for (var i = 0; i < inputs.length; i++) {
+                    if (inputs[i].style.display === 'none' || inputs[i].type === 'hidden') {
+                        var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+                        nativeSetter.call(inputs[i], e_reader.target.result);
+                        inputs[i].dispatchEvent(new Event('input', { bubbles: true }));
+                        break;
+                    }
+                }
+            };
+            reader.readAsDataURL(file);
+        };
+        input.click();
+        """
+        page.run_javascript(js_script)
+
     btn_pick_file = ft.ElevatedButton(
         "📷 갤러리에서 사진 선택",
         icon="photo_library",
-        on_click=lambda _: page.run_task(open_web_gallery),
+        on_click=open_web_gallery,
         bgcolor="#000000",
         color="#ffffff",
         width=360,
         height=45
     )
-
-    async def open_web_gallery():
-        # 브라우저 native 파일 창 오픈 JavaScript
-        js = """
-        (function() {
-            let input = document.createElement('input');
-            input.type = 'file';
-            input.accept = 'image/*';
-            input.onchange = function(e) {
-                let file = e.target.files[0];
-                if (!file) return;
-                let reader = new FileReader();
-                reader.onload = function(evt) {
-                    let inputs = document.querySelectorAll('input');
-                    for (let inp of inputs) {
-                        if (inp.style.display === 'none' || inp.type === 'hidden') {
-                            let setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-                            setter.call(inp, evt.target.result);
-                            inp.dispatchEvent(new Event('input', { bubbles: true }));
-                            break;
-                        }
-                    }
-                };
-                reader.readAsDataURL(file);
-            };
-            input.click();
-        })();
-        """
-        await page.run_javascript_async(js)
 
     result_card = ft.Container(
         content=ft.Column([
@@ -144,7 +140,7 @@ def main(page: ft.Page):
         width=360,
     )
 
-    # Gemini 분석
+    # Gemini 분석 함수
     def analyze_face(e):
         nonlocal selected_image_bytes
 
