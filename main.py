@@ -40,59 +40,9 @@ def main(page: ft.Page):
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
 
-    # 갤러리 파일 선택기 처리
-    def handle_picker_result(e: ft.FilePickerResultEvent):
-        nonlocal selected_image_bytes
-        if e.files and len(e.files) > 0:
-            file = e.files[0]
-            
-            raw_data = None
-            if hasattr(file, "bytes") and file.bytes:
-                raw_data = bytes(file.bytes)
-            
-            if raw_data:
-                try:
-                    img = Image.open(io.BytesIO(raw_data))
-                    img.thumbnail((800, 800))
-                    
-                    buffer = io.BytesIO()
-                    img.convert("RGB").save(buffer, format="JPEG", quality=85)
-                    selected_image_bytes = buffer.getvalue()
-
-                    base64_img = base64.b64encode(selected_image_bytes).decode('utf-8')
-                    img_preview.src_base64 = base64_img
-                    img_preview.src = None
-                    status_text.value = f"✅ 갤러리 사진('{file.name}') 로드 성공!"
-                    status_text.color = "#2e7d32"
-                except Exception as img_err:
-                    status_text.value = f"⚠️ 이미지 변환 오류: {str(img_err)}"
-                    status_text.color = "#d32f2f"
-            else:
-                status_text.value = "⚠️ 브라우저가 파일 데이터를 전달하지 못했습니다. 아래 URL을 사용해보세요!"
-                status_text.color = "#d32f2f"
-
-            page.update()
-
-    # FilePicker를 overlay 대신 메인 컨트롤 리스트에 안전하게 등록
-    file_picker = ft.FilePicker(on_result=handle_picker_result)
-
-    btn_pick_file = ft.ElevatedButton(
-        "📷 갤러리에서 사진 선택",
-        icon="photo_library",
-        on_click=lambda _: file_picker.pick_files(
-            allow_multiple=False,
-            allowed_extensions=["jpg", "jpeg", "png", "webp"],
-            with_data=True
-        ),
-        bgcolor="#000000",
-        color="#ffffff",
-        width=360,
-        height=45
-    )
-
-    # URL 보조 입력창
+    # URL 입력창 (보조/기본)
     img_url_input = ft.TextField(
-        label="🖼️ 이미지 URL (갤러리 보조용)",
+        label="🖼️ 이미지 URL 주소",
         hint_text="https://...",
         border_color="#000000",
         focused_border_color="#000000",
@@ -113,6 +63,19 @@ def main(page: ft.Page):
 
     btn_apply_url = ft.OutlinedButton("URL 적용", on_click=apply_url_image)
 
+    # Base64 직접 입력창 (갤러리 대체용)
+    base64_input = ft.TextField(
+        label="📋 이미지 Base64/텍스트 입력",
+        hint_text="이미지 데이터 텍스트 붙여넣기",
+        border_color="#000000",
+        focused_border_color="#000000",
+        label_style=ft.TextStyle(color="#555555"),
+        color="#000000",
+        password=True,
+        can_reveal_password=False,
+        visible=False # 평소엔 숨김
+    )
+
     result_card = ft.Container(
         content=ft.Column([
             ft.Text("📊 AI 외모 평가 결과", size=18, weight="bold", color="#000000"),
@@ -126,7 +89,7 @@ def main(page: ft.Page):
         width=360,
     )
 
-    # Gemini 분석
+    # Gemini 분석 함수
     def analyze_face(e):
         nonlocal selected_image_bytes
 
@@ -137,7 +100,7 @@ def main(page: ft.Page):
             return
 
         if not selected_image_bytes and not img_url_input.value:
-            status_text.value = "⚠️ 분석할 사진을 먼저 골라주세요!"
+            status_text.value = "⚠️ 이미지 URL 주소를 입력하고 [URL 적용]을 눌러주세요!"
             status_text.color = "#d32f2f"
             page.update()
             return
@@ -216,9 +179,7 @@ def main(page: ft.Page):
         width=360,
     )
 
-    # 화면 구성 (file_picker를 직접 등록)
     page.add(
-        file_picker,
         ft.Column([
             header_title,
             header_sub,
@@ -226,7 +187,6 @@ def main(page: ft.Page):
             api_key_input,
             ft.Container(height=5),
             img_preview,
-            btn_pick_file,
             ft.Row([img_url_input, btn_apply_url], width=360, alignment="center"),
             ft.Container(height=10),
             btn_scan,
