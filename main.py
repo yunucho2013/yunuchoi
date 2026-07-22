@@ -40,58 +40,6 @@ def main(page: ft.Page):
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
 
-    # 📷 갤러리 파일 선택 결과 처리
-    def on_file_picked(e: ft.FilePickerResultEvent):
-        nonlocal selected_image_bytes
-        if e.files and len(e.files) > 0:
-            file_info = e.files[0]
-            try:
-                # 파일 읽기
-                if file_info.path:
-                    with open(file_info.path, "rb") as f:
-                        raw_bytes = f.read()
-                else:
-                    status_text.value = "⚠️ 파일을 읽을 수 없습니다."
-                    status_text.color = "#d32f2f"
-                    page.update()
-                    return
-
-                # 이미지 변환 및 인코딩
-                img = Image.open(io.BytesIO(raw_bytes))
-                img.thumbnail((800, 800))
-                
-                buffer = io.BytesIO()
-                img.convert("RGB").save(buffer, format="JPEG", quality=85)
-                selected_image_bytes = buffer.getvalue()
-
-                base64_img = base64.b64encode(selected_image_bytes).decode('utf-8')
-                img_preview.src_base64 = base64_img
-                img_preview.src = None
-                status_text.value = f"✅ {file_info.name} 선택 완료!"
-                status_text.color = "#2e7d32"
-            except Exception as err:
-                status_text.value = f"⚠️ 사진 처리 오류: {str(err)}"
-                status_text.color = "#d32f2f"
-            page.update()
-
-    # 안전하게 FilePicker 생성 후 핸들러 바인딩 (버전 충돌 방지)
-    file_picker = ft.FilePicker()
-    file_picker.on_result = on_file_picked
-    file_picker.on_select = on_file_picked  # 최신 버전을 위한 이중 바인딩
-    
-    # 웹 페이지 overlay 등록 (Unknown control 에러 방지)
-    page.overlay.append(file_picker)
-
-    btn_pick_file = ft.ElevatedButton(
-        "📷 갤러리에서 사진 선택",
-        icon="photo_library",
-        on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE),
-        bgcolor="#000000",
-        color="#ffffff",
-        width=360,
-        height=45
-    )
-
     # URL 입력창
     img_url_input = ft.TextField(
         label="🖼️ 이미지 URL 주소",
@@ -114,6 +62,73 @@ def main(page: ft.Page):
             page.update()
 
     btn_apply_url = ft.OutlinedButton("URL 적용", on_click=apply_url_image)
+
+    # 📷 Base64 수신용 이벤트
+    def on_image_received(e):
+        nonlocal selected_image_bytes
+        if e.data:
+            try:
+                b64_data = e.data.split(",")[-1] if "," in e.data else e.data
+                raw_bytes = base64.b64decode(b64_data)
+                
+                img = Image.open(io.BytesIO(raw_bytes))
+                img.thumbnail((800, 800))
+                
+                buffer = io.BytesIO()
+                img.convert("RGB").save(buffer, format="JPEG", quality=85)
+                selected_image_bytes = buffer.getvalue()
+
+                img_preview.src_base64 = base64.b64encode(selected_image_bytes).decode('utf-8')
+                img_preview.src = None
+                status_text.value = "✅ 갤러리 이미지 선택 완료!"
+                status_text.color = "#2e7d32"
+            except Exception as err:
+                status_text.value = f"⚠️ 파일 처리 실패: {str(err)}"
+                status_text.color = "#d32f2f"
+            page.update()
+
+    # 데이터 수신용 숨겨진 필드
+    hidden_receiver = ft.TextField(visible=False, on_change=on_image_received)
+
+    # 브라우저 전용 갤러리 호출 함수 (FilePicker 미사용)
+    def trigger_native_gallery(e):
+        # 웹 브라우저에서 파일 창 띄우고 숨겨진 receiver로 Base64 전달
+        page.add(hidden_receiver) # 안전 재등록
+        
+    btn_pick_file = ft.ElevatedButton(
+        "📷 갤러리에서 사진 선택",
+        icon="photo_library",
+        on_click=trigger_native_gallery,
+        bgcolor="#000000",
+        color="#ffffff",
+        width=360,
+        height=45
+    )
+
+    # 갤러리 버튼 클릭 이벤트 바인딩
+    btn_pick_file.js_on_click = """
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = function(evt) {
+        var file = evt.target.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function(e_reader) {
+            var inputs = document.querySelectorAll('input');
+            for (var i = 0; i < inputs.length; i++) {
+                if (inputs[i].style.display === 'none' || inputs[i].type === 'hidden') {
+                    var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                    nativeSetter.call(inputs[i], e_reader.target.result);
+                    inputs[i].dispatchEvent(new Event('input', { bubbles: true }));
+                    break;
+                }
+            }
+        };
+        reader.readAsDataURL(file);
+    };
+    input.click();
+    """
 
     result_card = ft.Container(
         content=ft.Column([
@@ -219,6 +234,7 @@ def main(page: ft.Page):
     )
 
     page.add(
+        hidden_receiver,
         ft.Column([
             header_title,
             header_sub,
