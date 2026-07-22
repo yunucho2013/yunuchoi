@@ -40,7 +40,7 @@ def main(page: ft.Page):
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
 
-    # 갤러리 파일 처리 (안전 압축 및 바이너리 복원)
+    # 갤러리 파일 처리 (Pillow 압축 처리)
     def handle_picker_result(e: ft.FilePickerResultEvent):
         nonlocal selected_image_bytes
         if e.files and len(e.files) > 0:
@@ -52,9 +52,8 @@ def main(page: ft.Page):
             
             if raw_data:
                 try:
-                    # 갤러리 대용량 이미지 안전 최적화
                     img = Image.open(io.BytesIO(raw_data))
-                    img.thumbnail((800, 800))  # AI 분석에 최적인 크기로 축소
+                    img.thumbnail((800, 800))
                     
                     buffer = io.BytesIO()
                     img.convert("RGB").save(buffer, format="JPEG", quality=85)
@@ -69,7 +68,7 @@ def main(page: ft.Page):
                     status_text.value = f"⚠️ 이미지 변환 오류: {str(img_err)}"
                     status_text.color = "#d32f2f"
             else:
-                status_text.value = "⚠️ 브라우저가 파일 데이터를 전달하지 못했습니다. 용량이 작은 다른 사진을 골라보세요!"
+                status_text.value = "⚠️ 브라우저가 파일 데이터를 전달하지 못했습니다. 아래 URL로 시도해보세요!"
                 status_text.color = "#d32f2f"
 
             page.update()
@@ -94,7 +93,7 @@ def main(page: ft.Page):
 
     # URL 보조 입력창
     img_url_input = ft.TextField(
-        label="🖼️ 이미지 URL (갤러리 안 될 때 보조용)",
+        label="🖼️ 이미지 URL (갤러리 보조용)",
         hint_text="https://...",
         border_color="#000000",
         focused_border_color="#000000",
@@ -115,6 +114,7 @@ def main(page: ft.Page):
 
     btn_apply_url = ft.OutlinedButton("URL 적용", on_click=apply_url_image)
 
+    # ⭐ 문법 에러 수정 부분 (border.all -> Border.all)
     result_card = ft.Container(
         content=ft.Column([
             ft.Text("📊 AI 외모 평가 결과", size=18, weight="bold", color="#000000"),
@@ -123,13 +123,13 @@ def main(page: ft.Page):
         ]),
         padding=20,
         bgcolor="#f9f9f9",
-        border=ft.border.all(1, "#000000"),
+        border=ft.Border.all(1, "#000000"),
         border_radius=10,
         visible=False,
         width=360,
     )
 
-    # Gemini 스캔
+    # Gemini 분석
     def analyze_face(e):
         nonlocal selected_image_bytes
 
