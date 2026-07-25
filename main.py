@@ -30,7 +30,7 @@ def main(page: ft.Page):
     )
 
     img_preview = ft.Image(
-        src="https://via.placeholder.com/300x300/f0f0f0/000000?text=Take+a+Selfie",
+        src="https://via.placeholder.com/300x300/f0f0f0/000000?text=Upload+or+Paste+URL",
         width=250,
         height=250,
         fit="cover",
@@ -40,12 +40,12 @@ def main(page: ft.Page):
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
 
-    # Base64 사진 수신 및 미리보기 처리
-    def on_image_received(e):
+    # Base64 이미지 데이터 수신 (텍스트필드 변경 감지)
+    def on_image_data_changed(e):
         nonlocal selected_image_bytes
-        if e.data:
+        if e.control.value:
             try:
-                b64_data = e.data.split(",")[-1] if "," in e.data else e.data
+                b64_data = e.control.value.split(",")[-1] if "," in e.control.value else e.control.value
                 raw_bytes = base64.b64decode(b64_data)
                 
                 img = Image.open(io.BytesIO(raw_bytes))
@@ -57,63 +57,22 @@ def main(page: ft.Page):
 
                 img_preview.src_base64 = base64.b64encode(selected_image_bytes).decode('utf-8')
                 img_preview.src = None
-                status_text.value = "📸 셀카 촬영 완료!"
+                status_text.value = "📸 셀카 사진 적용 완료!"
                 status_text.color = "#2e7d32"
             except Exception as err:
-                status_text.value = f"⚠️ 이미지 처리 실패: {str(err)}"
+                status_text.value = f"⚠️ 사진 처리 실패: {str(err)}"
                 status_text.color = "#d32f2f"
             page.update()
 
-    data_receiver = ft.TextField(visible=False, on_change=on_image_received)
-
-    # 📸 HTML5 표준 네이티브 카메라 입력기 (차단율 0%)
-    # 태블릿/스마트폰 브라우저가 정식 지원하는 안전한 카메라 실행 방식입니다.
-    camera_html_code = """
-    <div style="display: flex; justify-content: center; align-items: center; width: 100%;">
-        <label for="camera-file-input" style="
-            background-color: #000000;
-            color: #ffffff;
-            padding: 14px 20px;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            width: 320px;
-            text-align: center;
-            display: inline-block;
-            box-shadow: 0px 2px 4px rgba(0,0,0,0.2);
-        ">
-            📸 지금 바로 셀카 찍기
-        </label>
-        <input id="camera-file-input" type="file" accept="image/*" capture="user" style="display:none;" onchange="
-            var file = this.files[0];
-            if (!file) return;
-            var reader = new FileReader();
-            reader.onload = function(e) {
-                var hiddenInputs = parent.document.querySelectorAll('input');
-                for (var i = 0; i < hiddenInputs.length; i++) {
-                    if (hiddenInputs[i].style.display === 'none' || hiddenInputs[i].type === 'hidden') {
-                        var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-                        nativeSetter.call(hiddenInputs[i], e.target.result);
-                        hiddenInputs[i].dispatchEvent(new Event('input', { bubbles: true }));
-                        break;
-                    }
-                }
-            };
-            reader.readAsDataURL(file);
-        ">
-    </div>
-    """
-
-    native_camera_view = ft.HtmlElementView(
-        html_content=camera_html_code,
-        height=60,
-        width=360
+    # 이미지 데이터 전달용 숨겨진 텍스트 필드
+    image_bridge_input = ft.TextField(
+        visible=False, 
+        on_change=on_image_data_changed
     )
 
-    # 보조 URL 입력창
+    # URL 입력창 및 적용
     img_url_input = ft.TextField(
-        label="🖼️ 이미지 URL 주소 (선택)",
+        label="🖼️ 이미지 URL 주소 입력",
         hint_text="https://...",
         border_color="#000000",
         focused_border_color="#000000",
@@ -138,7 +97,7 @@ def main(page: ft.Page):
         content=ft.Column([
             ft.Text("📊 AI 외모 평가 결과", size=18, weight="bold", color="#000000"),
             ft.Divider(color="#eeeeee"),
-            ft.Text("사진을 찍고 분석을 시작하세요.", size=14, color="#666666")
+            ft.Text("사진을 적용하고 분석을 시작하세요.", size=14, color="#666666")
         ]),
         padding=20,
         bgcolor="#f0f0f0",
@@ -147,7 +106,7 @@ def main(page: ft.Page):
         width=360,
     )
 
-    # Gemini AI 분석
+    # Gemini AI 분석 함수
     def analyze_face(e):
         nonlocal selected_image_bytes
 
@@ -158,7 +117,7 @@ def main(page: ft.Page):
             return
 
         if not selected_image_bytes and not img_url_input.value:
-            status_text.value = "⚠️ 먼저 셀카를 촬영하거나 URL을 입력해주세요!"
+            status_text.value = "⚠️ 먼저 셀카를 찍거나 이미지 URL을 입력해주세요!"
             status_text.color = "#d32f2f"
             page.update()
             return
@@ -238,7 +197,7 @@ def main(page: ft.Page):
     )
 
     page.add(
-        data_receiver,
+        image_bridge_input,
         ft.Column([
             header_title,
             header_sub,
@@ -246,7 +205,7 @@ def main(page: ft.Page):
             api_key_input,
             ft.Container(height=5),
             img_preview,
-            native_camera_view,
+            ft.Container(height=5),
             ft.Row([img_url_input, btn_apply_url], width=360, alignment="center"),
             ft.Container(height=10),
             btn_scan,
