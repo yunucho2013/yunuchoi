@@ -30,7 +30,7 @@ def main(page: ft.Page):
     )
 
     img_preview = ft.Image(
-        src="https://via.placeholder.com/300x300/f0f0f0/000000?text=Press+Photo+Button",
+        src="https://via.placeholder.com/300x300/f0f0f0/000000?text=Take+a+Selfie",
         width=250,
         height=250,
         fit="cover",
@@ -40,70 +40,7 @@ def main(page: ft.Page):
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
 
-    # 📸 Base64 사진 수신 및 미리보기 처리
-    def on_image_received(e):
-        nonlocal selected_image_bytes
-        if e.data:
-            try:
-                b64_data = e.data.split(",")[-1] if "," in e.data else e.data
-                raw_bytes = base64.b64decode(b64_data)
-                
-                img = Image.open(io.BytesIO(raw_bytes))
-                img.thumbnail((800, 800))
-                
-                buffer = io.BytesIO()
-                img.convert("RGB").save(buffer, format="JPEG", quality=85)
-                selected_image_bytes = buffer.getvalue()
-
-                img_preview.src_base64 = base64.b64encode(selected_image_bytes).decode('utf-8')
-                img_preview.src = None
-                status_text.value = "📸 셀카 촬영 완료!"
-                status_text.color = "#2e7d32"
-            except Exception as err:
-                status_text.value = f"⚠️ 이미지 처리 실패: {str(err)}"
-                status_text.color = "#d32f2f"
-            page.update()
-
-    # 카메라 전송용 수신기
-    data_receiver = ft.TextField(visible=False, on_change=on_image_received)
-
-    # 📸 [갤러리 제거 완료] 네이티브 카메라 즉시 호출 버튼
-    # 스마트폰에서는 즉시 카메라 앱이 셀카 모드로 열립니다.
-    btn_take_photo = ft.ElevatedButton(
-        "📸 지금 바로 셀카 찍기",
-        icon="camera_alt",
-        on_click=lambda _: page.run_javascript(
-            "javascript:(function(){"
-            "var input=document.createElement('input');"
-            "input.type='file';"
-            "input.accept='image/*';"
-            "input.capture='user';"  # 스마트폰 전면(user) 카메라 강제 호출 (갤러리 안 뜸)
-            "input.onchange=function(evt){"
-            "var file=evt.target.files[0];if(!file)return;"
-            "var reader=new FileReader();"
-            "reader.onload=function(e_reader){"
-            "var inputs=document.querySelectorAll('input');"
-            "for(var i=0;i<inputs.length;i++){"
-            "if(inputs[i].style.display==='none'||inputs[i].type==='hidden'){"
-            "var nativeSetter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;"
-            "nativeSetter.call(inputs[i],e_reader.target.result);"
-            "inputs[i].dispatchEvent(new Event('input',{bubbles:true}));"
-            "break;"
-            "}"
-            "}"
-            "};"
-            "reader.readAsDataURL(file);"
-            "};"
-            "input.click();"
-            "})()"
-        ),
-        bgcolor="#000000",
-        color="#ffffff",
-        width=360,
-        height=50
-    )
-
-    # 보조용 URL 입력창 (선택)
+    # URL 입력창 (보조용)
     img_url_input = ft.TextField(
         label="🖼️ 이미지 URL 주소 (선택)",
         hint_text="https://...",
@@ -125,6 +62,44 @@ def main(page: ft.Page):
             page.update()
 
     btn_apply_url = ft.OutlinedButton("적용", on_click=apply_url_image)
+
+    # 📸 셀카 카메라 전용 호출 (HTML5 capture='user' 사용)
+    def open_camera(e):
+        # 스마트폰/태블릿에서 누르면 즉시 셀카 카메라가 실행됩니다.
+        camera_html = (
+            "data:text/html;charset=utf-8,"
+            "<html><head><meta name='viewport' content='width=device-width, initial-scale=1.0'></head>"
+            "<body style='display:flex;justify-content:center;align-items:center;height:100vh;margin:0;font-family:sans-serif;'>"
+            "<div style='text-align:center;'>"
+            "<h3>📸 셀카 촬영을 진행해주세요</h3>"
+            "<input type='file' accept='image/*' capture='user' id='cam' style='font-size:16px;padding:10px;'><br><br>"
+            "<p id='msg' style='color:green;'></p>"
+            "</div>"
+            "<script>"
+            "document.getElementById('cam').onchange = function(evt) {"
+            "  var file = evt.target.files[0];"
+            "  if(!file) return;"
+            "  var reader = new FileReader();"
+            "  reader.onload = function(e) {"
+            "    document.getElementById('msg').innerText = '✅ 촬영 완료! 이 창을 닫고 앱으로 돌아가세요. (복사됨)';"
+            "    navigator.clipboard.writeText(e.target.result);"
+            "  };"
+            "  reader.readAsDataURL(file);"
+            "};"
+            "</script>"
+            "</body></html>"
+        )
+        page.launch_url(camera_html)
+
+    btn_take_photo = ft.ElevatedButton(
+        "📸 지금 바로 셀카 찍기",
+        icon="camera_alt",
+        on_click=open_camera,
+        bgcolor="#000000",
+        color="#ffffff",
+        width=360,
+        height=50
+    )
 
     result_card = ft.Container(
         content=ft.Column([
@@ -230,7 +205,6 @@ def main(page: ft.Page):
     )
 
     page.add(
-        data_receiver,
         ft.Column([
             header_title,
             header_sub,
@@ -248,4 +222,4 @@ def main(page: ft.Page):
         ], horizontal_alignment="center", spacing=10)
     )
 
-ft.app(target=main, view=ft.AppView.WEB_BROWSER, assets_dir="assets")
+ft.app(target=main, view=ft.AppView.WEB_BROWSER)
