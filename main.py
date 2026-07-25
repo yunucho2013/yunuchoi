@@ -1,4 +1,4 @@
-=import flet as ft
+import flet as ft
 import base64
 import io
 from PIL import Image
@@ -40,16 +40,29 @@ def main(page: ft.Page):
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
 
-    # 카메라 촬영 완료 시 호출되는 함수
-    def on_camera_snap(e):
+    # 1. 가장 순수한 FilePicker 생성 (버전 충돌 요소 제거)
+    file_picker = ft.FilePicker()
+    page.overlay.append(file_picker)  # 웹 환경 필수 등록
+
+    # 파일 선택 완료 시 실행
+    def handle_file_result(e: ft.FilePickerResultEvent):
         nonlocal selected_image_bytes
-        if e.data:
+        if e.files and len(e.files) > 0:
             try:
-                # Base64 데이터 디코딩
-                b64_data = e.data.split(",")[-1] if "," in e.data else e.data
-                raw_bytes = base64.b64decode(b64_data)
-                
-                # 이미지 용량 최적화 (Gemini 전송용)
+                # 업로드된 파일 바이너리 처리
+                uf = e.files[0]
+                status_text.value = f"📸 {uf.name} 불러오는 중..."
+                page.update()
+
+                # 파일 열기 (웹 및 서버 공통 지원)
+                if uf.path:
+                    with open(uf.path, "rb") as f:
+                        raw_bytes = f.read()
+                else:
+                    status_text.value = "⚠️ 이미지 읽기 실패"
+                    page.update()
+                    return
+
                 img = Image.open(io.BytesIO(raw_bytes))
                 img.thumbnail((800, 800))
                 
@@ -57,48 +70,23 @@ def main(page: ft.Page):
                 img.convert("RGB").save(buffer, format="JPEG", quality=85)
                 selected_image_bytes = buffer.getvalue()
 
-                # 화면 미리보기 업데이트
                 img_preview.src_base64 = base64.b64encode(selected_image_bytes).decode('utf-8')
                 img_preview.src = None
-                
-                status_text.value = "📸 사진 촬영 완료!"
+                status_text.value = "✅ 이미지 선택 완료!"
                 status_text.color = "#2e7d32"
             except Exception as err:
-                status_text.value = f"⚠️ 이미지 처리 실패: {str(err)}"
+                status_text.value = f"⚠️ 사진 처리 오류: {str(err)}"
                 status_text.color = "#d32f2f"
             page.update()
 
-    # 카메라 데이터를 안전하게 전달받는 숨겨진 입력창
-    camera_data_receiver = ft.TextField(visible=False, on_change=on_camera_snap)
+    file_picker.on_result = handle_file_result
 
-    # 📸 순수 HTML5 카메라 호출 (모바일 셀카 / PC 웹캠)
-    btn_take_photo = ft.ElevatedButton(
-        "📸 카메라로 셀카 찍기",
+    btn_pick_file = ft.ElevatedButton(
+        "📸 사진/셀카 선택하기",
         icon="camera_alt",
-        on_click=lambda _: page.launch_url(
-            "javascript:(function(){"
-            "var input=document.createElement('input');"
-            "input.type='file';"
-            "input.accept='image/*';"
-            "input.capture='user';"  # 셀카 전면 카메라 우선 호출
-            "input.onchange=function(evt){"
-            "var file=evt.target.files[0];if(!file)return;"
-            "var reader=new FileReader();"
-            "reader.onload=function(e_reader){"
-            "var inputs=document.querySelectorAll('input');"
-            "for(var i=0;i<inputs.length;i++){"
-            "if(inputs[i].style.display==='none'||inputs[i].type==='hidden'){"
-            "var nativeSetter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;"
-            "nativeSetter.call(inputs[i],e_reader.target.result);"
-            "inputs[i].dispatchEvent(new Event('input',{bubbles:true}));"
-            "break;"
-            "}"
-            "}"
-            "};"
-            "reader.readAsDataURL(file);"
-            "};"
-            "input.click();"
-            "})()"
+        on_click=lambda _: file_picker.pick_files(
+            allow_multiple=False,
+            file_type=ft.FilePickerFileType.IMAGE
         ),
         bgcolor="#000000",
         color="#ffffff",
@@ -106,7 +94,7 @@ def main(page: ft.Page):
         height=45
     )
 
-    # 보조용 URL 입력창
+    # URL 입력창
     img_url_input = ft.TextField(
         label="🖼️ 이미지 URL 주소 (선택)",
         hint_text="https://...",
@@ -133,7 +121,7 @@ def main(page: ft.Page):
         content=ft.Column([
             ft.Text("📊 AI 외모 평가 결과", size=18, weight="bold", color="#000000"),
             ft.Divider(color="#eeeeee"),
-            ft.Text("사진을 찍고 분석을 시작하세요.", size=14, color="#666666")
+            ft.Text("사진을 선택하고 분석을 시작하세요.", size=14, color="#666666")
         ]),
         padding=20,
         bgcolor="#f0f0f0",
@@ -153,7 +141,7 @@ def main(page: ft.Page):
             return
 
         if not selected_image_bytes and not img_url_input.value:
-            status_text.value = "⚠️ 먼저 셀카를 촬영하거나 URL을 입력해주세요!"
+            status_text.value = "⚠️ 먼저 사진을 고르거나 URL을 입력해주세요!"
             status_text.color = "#d32f2f"
             page.update()
             return
@@ -233,7 +221,6 @@ def main(page: ft.Page):
     )
 
     page.add(
-        camera_data_receiver,
         ft.Column([
             header_title,
             header_sub,
@@ -241,7 +228,7 @@ def main(page: ft.Page):
             api_key_input,
             ft.Container(height=5),
             img_preview,
-            btn_take_photo,
+            btn_pick_file,
             ft.Row([img_url_input, btn_apply_url], width=360, alignment="center"),
             ft.Container(height=10),
             btn_scan,
