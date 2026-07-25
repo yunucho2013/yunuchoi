@@ -5,7 +5,7 @@ from PIL import Image
 from google import genai
 from google.genai import types
 
-async def main(page: ft.Page):
+def main(page: ft.Page):
     page.title = "외모 점수 측정 앱"
     page.window_width = 420
     page.window_height = 850
@@ -30,7 +30,7 @@ async def main(page: ft.Page):
     )
 
     img_preview = ft.Image(
-        src="https://via.placeholder.com/300x300/f0f0f0/000000?text=No+Image",
+        src="https://via.placeholder.com/300x300/f0f0f0/000000?text=Press+Photo+Button",
         width=250,
         height=250,
         fit="cover",
@@ -40,27 +40,14 @@ async def main(page: ft.Page):
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
 
-    # 1. 파일 피커 및 콜백 함수 생성
-    async def on_file_picked(e: ft.FilePickerResultEvent):
+    # 📸 Base64 사진 수신 및 미리보기 처리
+    def on_image_received(e):
         nonlocal selected_image_bytes
-        if e.files and len(e.files) > 0:
-            file = e.files[0]
-            status_text.value = "📸 이미지 로딩 중..."
-            page.update()
-            
+        if e.data:
             try:
-                # Web 환경 대응: bytes 직접 읽기
-                if file.bytes:
-                    raw_bytes = file.bytes
-                elif file.path:
-                    with open(file.path, "rb") as f:
-                        raw_bytes = f.read()
-                else:
-                    status_text.value = "⚠️ 파일을 불러올 수 없습니다."
-                    status_text.color = "#d32f2f"
-                    page.update()
-                    return
-
+                b64_data = e.data.split(",")[-1] if "," in e.data else e.data
+                raw_bytes = base64.b64decode(b64_data)
+                
                 img = Image.open(io.BytesIO(raw_bytes))
                 img.thumbnail((800, 800))
                 
@@ -70,35 +57,53 @@ async def main(page: ft.Page):
 
                 img_preview.src_base64 = base64.b64encode(selected_image_bytes).decode('utf-8')
                 img_preview.src = None
-                status_text.value = "✅ 사진 준비 완료!"
+                status_text.value = "📸 셀카 촬영 완료!"
                 status_text.color = "#2e7d32"
             except Exception as err:
-                status_text.value = f"⚠️ 오류 발생: {str(err)}"
+                status_text.value = f"⚠️ 이미지 처리 실패: {str(err)}"
                 status_text.color = "#d32f2f"
             page.update()
 
-    file_picker = ft.FilePicker(on_result=on_file_picked)
-    page.overlay.append(file_picker)
+    # 카메라 전송용 수신기
+    data_receiver = ft.TextField(visible=False, on_change=on_image_received)
 
-    # 2. 버튼 클릭 핸들러 (카메라/파일 가져오기)
-    async def pick_image_click(e):
-        await file_picker.pick_files_async(
-            allow_multiple=False,
-            file_type=ft.FilePickerFileType.IMAGE,
-            with_data=True # 웹 전송 필수 속성
-        )
-
+    # 📸 [갤러리 제거 완료] 네이티브 카메라 즉시 호출 버튼
+    # 스마트폰에서는 즉시 카메라 앱이 셀카 모드로 열립니다.
     btn_take_photo = ft.ElevatedButton(
-        "📸 셀카 촬영 / 사진 선택",
+        "📸 지금 바로 셀카 찍기",
         icon="camera_alt",
-        on_click=pick_image_click,
+        on_click=lambda _: page.run_javascript(
+            "javascript:(function(){"
+            "var input=document.createElement('input');"
+            "input.type='file';"
+            "input.accept='image/*';"
+            "input.capture='user';"  # 스마트폰 전면(user) 카메라 강제 호출 (갤러리 안 뜸)
+            "input.onchange=function(evt){"
+            "var file=evt.target.files[0];if(!file)return;"
+            "var reader=new FileReader();"
+            "reader.onload=function(e_reader){"
+            "var inputs=document.querySelectorAll('input');"
+            "for(var i=0;i<inputs.length;i++){"
+            "if(inputs[i].style.display==='none'||inputs[i].type==='hidden'){"
+            "var nativeSetter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;"
+            "nativeSetter.call(inputs[i],e_reader.target.result);"
+            "inputs[i].dispatchEvent(new Event('input',{bubbles:true}));"
+            "break;"
+            "}"
+            "}"
+            "};"
+            "reader.readAsDataURL(file);"
+            "};"
+            "input.click();"
+            "})()"
+        ),
         bgcolor="#000000",
         color="#ffffff",
         width=360,
         height=50
     )
 
-    # URL 입력창
+    # 보조용 URL 입력창 (선택)
     img_url_input = ft.TextField(
         label="🖼️ 이미지 URL 주소 (선택)",
         hint_text="https://...",
@@ -225,6 +230,7 @@ async def main(page: ft.Page):
     )
 
     page.add(
+        data_receiver,
         ft.Column([
             header_title,
             header_sub,
@@ -242,4 +248,4 @@ async def main(page: ft.Page):
         ], horizontal_alignment="center", spacing=10)
     )
 
-ft.app(target=main, view=ft.AppView.WEB_BROWSER)
+ft.app(target=main, view=ft.AppView.WEB_BROWSER, assets_dir="assets")
