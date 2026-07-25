@@ -1,6 +1,7 @@
 import flet as ft
 import base64
 import io
+import json
 from PIL import Image
 from google import genai
 from google.genai import types
@@ -30,7 +31,7 @@ def main(page: ft.Page):
     )
 
     img_preview = ft.Image(
-        src="https://via.placeholder.com/300x300/f0f0f0/000000?text=Upload+or+Paste+URL",
+        src="https://via.placeholder.com/300x300/f0f0f0/000000?text=Take+a+Selfie",
         width=250,
         height=250,
         fit="cover",
@@ -40,34 +41,84 @@ def main(page: ft.Page):
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
 
-    # Base64 이미지 데이터 수신 (텍스트필드 변경 감지)
-    def on_image_data_changed(e):
+    # [복구된 기능] Base64 사진 수신 및 미리보기 처리
+    def on_image_received(e):
         nonlocal selected_image_bytes
-        if e.control.value:
+        if e.data:
             try:
-                b64_data = e.control.value.split(",")[-1] if "," in e.control.value else e.control.value
-                raw_bytes = base64.b64decode(b64_data)
+                # 자바스크립트에서 보낸 JSON 데이터를 파싱
+                data = json.loads(e.data)
+                b64_string = data.get("image", "")
                 
-                img = Image.open(io.BytesIO(raw_bytes))
-                img.thumbnail((800, 800))
-                
-                buffer = io.BytesIO()
-                img.convert("RGB").save(buffer, format="JPEG", quality=85)
-                selected_image_bytes = buffer.getvalue()
+                if b64_string:
+                    b64_data = b64_string.split(",")[-1] if "," in b64_string else b64_string
+                    raw_bytes = base64.b64decode(b64_data)
+                    
+                    img = Image.open(io.BytesIO(raw_bytes))
+                    img.thumbnail((800, 800))
+                    
+                    buffer = io.BytesIO()
+                    img.convert("RGB").save(buffer, format="JPEG", quality=85)
+                    selected_image_bytes = buffer.getvalue()
 
-                img_preview.src_base64 = base64.b64encode(selected_image_bytes).decode('utf-8')
-                img_preview.src = None
-                status_text.value = "📸 셀카 사진 적용 완료!"
-                status_text.color = "#2e7d32"
+                    img_preview.src_base64 = base64.b64encode(selected_image_bytes).decode('utf-8')
+                    img_preview.src = None
+                    status_text.value = "📸 셀카 촬영 완료!"
+                    status_text.color = "#2e7d32"
+                else:
+                    status_text.value = "⚠️ 이미지 데이터를 받지 못했습니다."
+                    status_text.color = "#d32f2f"
             except Exception as err:
-                status_text.value = f"⚠️ 사진 처리 실패: {str(err)}"
+                status_text.value = f"⚠️ 이미지 처리 실패: {str(err)}"
                 status_text.color = "#d32f2f"
             page.update()
 
-    # 이미지 데이터 전달용 숨겨진 텍스트 필드
-    image_bridge_input = ft.TextField(
-        visible=False, 
-        on_change=on_image_data_changed
+    # 파이썬과 자바스크립트 간의 통신 채널 설정
+    page.on_java_script_message = on_image_received
+
+    # [복구된 버튼] 📸 스마트폰/태블릿 전면 카메라 즉시 호출
+    # 최신 브라우저 보안 정책을 준수하는 정석 HTML5 호출 방식입니다.
+    def take_photo_click(e):
+        status_text.value = "카메라를 켜는 중..."
+        page.update()
+        
+        # 브라우저에게 셀카 카메라를 켜라고 명령하는 자바스크립트
+        camera_script = """
+        (function() {
+            var input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.setAttribute('capture', 'user'); // 전면 카메라(셀카) 강제
+            input.style.display = 'none';
+
+            input.onchange = function(evt) {
+                var file = evt.target.files[0];
+                if (!file) return;
+                var reader = new FileReader();
+                reader.onload = function(e_reader) {
+                    // 촬영된 Base64 데이터를 Flet(파이썬)으로 전송
+                    window.flet_javaScriptMessage(JSON.stringify({
+                        "image": e_reader.target.result
+                    }));
+                };
+                reader.readAsDataURL(file);
+            };
+
+            document.body.appendChild(input);
+            input.click(); // 사용자가 버튼을 누른 것처럼 시뮬레이션
+            input.remove(); // 사용 후 제거
+        })();
+        """
+        page.run_javascript(camera_script)
+
+    btn_take_photo = ft.ElevatedButton(
+        "📸 지금 바로 셀카 찍기",
+        icon="camera_alt",
+        on_click=take_photo_click,
+        bgcolor="#000000",
+        color="#ffffff",
+        width=360,
+        height=50
     )
 
     # URL 입력창 및 적용
@@ -84,11 +135,15 @@ def main(page: ft.Page):
     def apply_url_image(e):
         nonlocal selected_image_bytes
         if img_url_input.value:
-            img_preview.src = img_url_input.value
-            img_preview.src_base64 = None
-            selected_image_bytes = None
-            status_text.value = "✅ URL 이미지 적용 완료!"
-            status_text.color = "#2e7d32"
+            try:
+                img_preview.src = img_url_input.value
+                img_preview.src_base64 = None
+                selected_image_bytes = None
+                status_text.value = "✅ URL 이미지 적용 완료!"
+                status_text.color = "#2e7d32"
+            except Exception as err:
+                status_text.value = f"⚠️ URL 이미지 적용 실패: {str(err)}"
+                status_text.color = "#d32f2f"
             page.update()
 
     btn_apply_url = ft.OutlinedButton("적용", on_click=apply_url_image)
@@ -153,6 +208,7 @@ def main(page: ft.Page):
                     mime_type="image/jpeg",
                 )
             else:
+                # URL 이미지 다운로드 (CORS 이슈 주의)
                 import urllib.request
                 req = urllib.request.Request(
                     img_url_input.value, 
@@ -197,7 +253,6 @@ def main(page: ft.Page):
     )
 
     page.add(
-        image_bridge_input,
         ft.Column([
             header_title,
             header_sub,
@@ -206,6 +261,7 @@ def main(page: ft.Page):
             ft.Container(height=5),
             img_preview,
             ft.Container(height=5),
+            btn_take_photo, # 복구된 버튼 배치
             ft.Row([img_url_input, btn_apply_url], width=360, alignment="center"),
             ft.Container(height=10),
             btn_scan,
