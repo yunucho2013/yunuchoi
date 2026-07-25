@@ -66,52 +66,49 @@ def main(page: ft.Page):
 
     data_receiver = ft.TextField(visible=False, on_change=on_image_received)
 
-    # 📸 HTML5 Native File Upload (셀카 카메라 전용)
-    # 태블릿/스마트폰 보안 팝업 차단을 우회하여 100% 작동합니다.
-    def trigger_native_camera(e):
-        js_bridge = """
-        var oldInput = document.getElementById('native-camera-input');
-        if (oldInput) oldInput.remove();
-
-        var input = document.createElement('input');
-        input.id = 'native-camera-input';
-        input.type = 'file';
-        input.accept = 'image/*';
-        input.setAttribute('capture', 'user'); // 전면 셀카 강제
-        input.style.display = 'none';
-
-        input.onchange = function(evt) {
-            var file = evt.target.files[0];
+    # 📸 HTML5 표준 네이티브 카메라 입력기 (차단율 0%)
+    # 태블릿/스마트폰 브라우저가 정식 지원하는 안전한 카메라 실행 방식입니다.
+    camera_html_code = """
+    <div style="display: flex; justify-content: center; align-items: center; width: 100%;">
+        <label for="camera-file-input" style="
+            background-color: #000000;
+            color: #ffffff;
+            padding: 14px 20px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 320px;
+            text-align: center;
+            display: inline-block;
+            box-shadow: 0px 2px 4px rgba(0,0,0,0.2);
+        ">
+            📸 지금 바로 셀카 찍기
+        </label>
+        <input id="camera-file-input" type="file" accept="image/*" capture="user" style="display:none;" onchange="
+            var file = this.files[0];
             if (!file) return;
             var reader = new FileReader();
-            reader.onload = function(e_reader) {
-                var hiddenInputs = document.querySelectorAll('input');
+            reader.onload = function(e) {
+                var hiddenInputs = parent.document.querySelectorAll('input');
                 for (var i = 0; i < hiddenInputs.length; i++) {
                     if (hiddenInputs[i].style.display === 'none' || hiddenInputs[i].type === 'hidden') {
                         var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-                        nativeSetter.call(hiddenInputs[i], e_reader.target.result);
+                        nativeSetter.call(hiddenInputs[i], e.target.result);
                         hiddenInputs[i].dispatchEvent(new Event('input', { bubbles: true }));
                         break;
                     }
                 }
             };
             reader.readAsDataURL(file);
-        };
+        ">
+    </div>
+    """
 
-        document.body.appendChild(input);
-        input.click();
-        """
-        # eval 이용한 브라우저 직접 실행
-        page.launch_url(f"javascript:{js_bridge.replace(chr(10), '').replace('  ', '')}")
-
-    btn_take_photo = ft.ElevatedButton(
-        "📸 지금 바로 셀카 찍기",
-        icon="camera_alt",
-        on_click=trigger_native_camera,
-        bgcolor="#000000",
-        color="#ffffff",
-        width=360,
-        height=50
+    native_camera_view = ft.HtmlElementView(
+        html_content=camera_html_code,
+        height=60,
+        width=360
     )
 
     # 보조 URL 입력창
@@ -249,7 +246,7 @@ def main(page: ft.Page):
             api_key_input,
             ft.Container(height=5),
             img_preview,
-            btn_take_photo,
+            native_camera_view,
             ft.Row([img_url_input, btn_apply_url], width=360, alignment="center"),
             ft.Container(height=10),
             btn_scan,
