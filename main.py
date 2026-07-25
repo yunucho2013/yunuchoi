@@ -1,7 +1,6 @@
 import flet as ft
 import base64
 import io
-import json
 from PIL import Image
 from google import genai
 from google.genai import types
@@ -31,7 +30,7 @@ def main(page: ft.Page):
     )
 
     img_preview = ft.Image(
-        src="https://via.placeholder.com/300x300/f0f0f0/000000?text=Take+a+Selfie",
+        src="https://via.placeholder.com/300x300/f0f0f0/000000?text=Take+a+Photo",
         width=250,
         height=250,
         fit="cover",
@@ -41,80 +40,56 @@ def main(page: ft.Page):
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
 
-    # [복구된 기능] Base64 사진 수신 및 미리보기 처리
-    def on_image_received(e):
-        nonlocal selected_image_bytes
-        if e.data:
-            try:
-                # 자바스크립트에서 보낸 JSON 데이터를 파싱
-                data = json.loads(e.data)
-                b64_string = data.get("image", "")
-                
-                if b64_string:
-                    b64_data = b64_string.split(",")[-1] if "," in b64_string else b64_string
-                    raw_bytes = base64.b64decode(b64_data)
-                    
-                    img = Image.open(io.BytesIO(raw_bytes))
-                    img.thumbnail((800, 800))
-                    
-                    buffer = io.BytesIO()
-                    img.convert("RGB").save(buffer, format="JPEG", quality=85)
-                    selected_image_bytes = buffer.getvalue()
+    # 1. Flet 표준 FilePicker 생성 (run_javascript 절대 사용 안 함)
+    file_picker = ft.FilePicker()
+    page.overlay.append(file_picker)
 
-                    img_preview.src_base64 = base64.b64encode(selected_image_bytes).decode('utf-8')
-                    img_preview.src = None
-                    status_text.value = "📸 셀카 촬영 완료!"
-                    status_text.color = "#2e7d32"
+    # 2. 사진 결과 처리 이벤트
+    def handle_file_result(e: ft.FilePickerResultEvent):
+        nonlocal selected_image_bytes
+        if e.files and len(e.files) > 0:
+            try:
+                file_info = e.files[0]
+                status_text.value = f"📸 {file_info.name} 불러오는 중..."
+                page.update()
+
+                if file_info.bytes:
+                    raw_bytes = file_info.bytes
+                elif file_info.path:
+                    with open(file_info.path, "rb") as f:
+                        raw_bytes = f.read()
                 else:
-                    status_text.value = "⚠️ 이미지 데이터를 받지 못했습니다."
+                    status_text.value = "⚠️ 이미지를 불러올 수 없습니다."
                     status_text.color = "#d32f2f"
+                    page.update()
+                    return
+
+                img = Image.open(io.BytesIO(raw_bytes))
+                img.thumbnail((800, 800))
+                
+                buffer = io.BytesIO()
+                img.convert("RGB").save(buffer, format="JPEG", quality=85)
+                selected_image_bytes = buffer.getvalue()
+
+                img_preview.src_base64 = base64.b64encode(selected_image_bytes).decode('utf-8')
+                img_preview.src = None
+                status_text.value = "✅ 사진 준비 완료!"
+                status_text.color = "#2e7d32"
             except Exception as err:
-                status_text.value = f"⚠️ 이미지 처리 실패: {str(err)}"
+                status_text.value = f"⚠️ 오류 발생: {str(err)}"
                 status_text.color = "#d32f2f"
             page.update()
 
-    # 파이썬과 자바스크립트 간의 통신 채널 설정
-    page.on_java_script_message = on_image_received
+    file_picker.on_result = handle_file_result
 
-    # [복구된 버튼] 📸 스마트폰/태블릿 전면 카메라 즉시 호출
-    # 최신 브라우저 보안 정책을 준수하는 정석 HTML5 호출 방식입니다.
-    def take_photo_click(e):
-        status_text.value = "카메라를 켜는 중..."
-        page.update()
-        
-        # 브라우저에게 셀카 카메라를 켜라고 명령하는 자바스크립트
-        camera_script = """
-        (function() {
-            var input = document.createElement('input');
-            input.type = 'file';
-            input.accept = 'image/*';
-            input.setAttribute('capture', 'user'); // 전면 카메라(셀카) 강제
-            input.style.display = 'none';
-
-            input.onchange = function(evt) {
-                var file = evt.target.files[0];
-                if (!file) return;
-                var reader = new FileReader();
-                reader.onload = function(e_reader) {
-                    // 촬영된 Base64 데이터를 Flet(파이썬)으로 전송
-                    window.flet_javaScriptMessage(JSON.stringify({
-                        "image": e_reader.target.result
-                    }));
-                };
-                reader.readAsDataURL(file);
-            };
-
-            document.body.appendChild(input);
-            input.click(); // 사용자가 버튼을 누른 것처럼 시뮬레이션
-            input.remove(); // 사용 후 제거
-        })();
-        """
-        page.run_javascript(camera_script)
-
+    # 3. run_javascript 없이 Flet 내장 기능으로만 파일/카메라 호출
     btn_take_photo = ft.ElevatedButton(
-        "📸 지금 바로 셀카 찍기",
+        "📸 사진 찍기 / 이미지 선택",
         icon="camera_alt",
-        on_click=take_photo_click,
+        on_click=lambda _: file_picker.pick_files(
+            allow_multiple=False,
+            file_type=ft.FilePickerFileType.IMAGE
+        ),
         bgcolor="#000000",
         color="#ffffff",
         width=360,
@@ -123,7 +98,7 @@ def main(page: ft.Page):
 
     # URL 입력창 및 적용
     img_url_input = ft.TextField(
-        label="🖼️ 이미지 URL 주소 입력",
+        label="🖼️ 이미지 URL 주소 입력 (선택)",
         hint_text="https://...",
         border_color="#000000",
         focused_border_color="#000000",
@@ -135,15 +110,11 @@ def main(page: ft.Page):
     def apply_url_image(e):
         nonlocal selected_image_bytes
         if img_url_input.value:
-            try:
-                img_preview.src = img_url_input.value
-                img_preview.src_base64 = None
-                selected_image_bytes = None
-                status_text.value = "✅ URL 이미지 적용 완료!"
-                status_text.color = "#2e7d32"
-            except Exception as err:
-                status_text.value = f"⚠️ URL 이미지 적용 실패: {str(err)}"
-                status_text.color = "#d32f2f"
+            img_preview.src = img_url_input.value
+            img_preview.src_base64 = None
+            selected_image_bytes = None
+            status_text.value = "✅ URL 이미지 적용 완료!"
+            status_text.color = "#2e7d32"
             page.update()
 
     btn_apply_url = ft.OutlinedButton("적용", on_click=apply_url_image)
@@ -152,7 +123,7 @@ def main(page: ft.Page):
         content=ft.Column([
             ft.Text("📊 AI 외모 평가 결과", size=18, weight="bold", color="#000000"),
             ft.Divider(color="#eeeeee"),
-            ft.Text("사진을 적용하고 분석을 시작하세요.", size=14, color="#666666")
+            ft.Text("사진을 등록하고 분석을 시작하세요.", size=14, color="#666666")
         ]),
         padding=20,
         bgcolor="#f0f0f0",
@@ -172,7 +143,7 @@ def main(page: ft.Page):
             return
 
         if not selected_image_bytes and not img_url_input.value:
-            status_text.value = "⚠️ 먼저 셀카를 찍거나 이미지 URL을 입력해주세요!"
+            status_text.value = "⚠️ 먼저 사진을 찍거나 URL을 입력해주세요!"
             status_text.color = "#d32f2f"
             page.update()
             return
@@ -208,7 +179,6 @@ def main(page: ft.Page):
                     mime_type="image/jpeg",
                 )
             else:
-                # URL 이미지 다운로드 (CORS 이슈 주의)
                 import urllib.request
                 req = urllib.request.Request(
                     img_url_input.value, 
@@ -261,7 +231,7 @@ def main(page: ft.Page):
             ft.Container(height=5),
             img_preview,
             ft.Container(height=5),
-            btn_take_photo, # 복구된 버튼 배치
+            btn_take_photo,
             ft.Row([img_url_input, btn_apply_url], width=360, alignment="center"),
             ft.Container(height=10),
             btn_scan,
