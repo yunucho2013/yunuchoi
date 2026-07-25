@@ -1,6 +1,7 @@
 import flet as ft
 import base64
 import io
+import json
 from PIL import Image
 from google import genai
 from google.genai import types
@@ -30,7 +31,7 @@ def main(page: ft.Page):
     )
 
     img_preview = ft.Image(
-        src="https://via.placeholder.com/300x300/f0f0f0/000000?text=Take+a+Photo",
+        src="https://via.placeholder.com/300x300/f0f0f0/000000?text=Take+a+Selfie",
         width=250,
         height=250,
         fit="cover",
@@ -40,63 +41,85 @@ def main(page: ft.Page):
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
 
-    # 1. Flet 표준 FilePicker 생성 (run_javascript 절대 사용 안 함)
-    file_picker = ft.FilePicker()
-    page.overlay.append(file_picker)
-
-    # 2. 사진 결과 처리 이벤트
-    def handle_file_result(e: ft.FilePickerResultEvent):
+    # 📸 셀카 전용 사진 데이터 수신기
+    def on_image_received(e):
         nonlocal selected_image_bytes
-        if e.files and len(e.files) > 0:
+        if e.data:
             try:
-                file_info = e.files[0]
-                status_text.value = f"📸 {file_info.name} 불러오는 중..."
+                data = json.loads(e.data)
+                b64_string = data.get("image", "")
+                
+                if b64_string:
+                    b64_data = b64_string.split(",")[-1] if "," in b64_string else b64_string
+                    raw_bytes = base64.b64decode(b64_data)
+                    
+                    img = Image.open(io.BytesIO(raw_bytes))
+                    img.thumbnail((800, 800))
+                    
+                    buffer = io.BytesIO()
+                    img.convert("RGB").save(buffer, format="JPEG", quality=85)
+                    selected_image_bytes = buffer.getvalue()
+
+                    img_preview.src_base64 = base64.b64encode(selected_image_bytes).decode('utf-8')
+                    img_preview.src = None
+                    status_text.value = "📸 셀카 촬영 완료!"
+                    status_text.color = "#2e7d32"
+                page.update()
+            except Exception as err:
+                status_text.value = f"⚠️ 촬영 실패: {str(err)}"
+                status_text.color = "#d32f2f"
                 page.update()
 
-                if file_info.bytes:
-                    raw_bytes = file_info.bytes
-                elif file_info.path:
-                    with open(file_info.path, "rb") as f:
-                        raw_bytes = f.read()
-                else:
-                    status_text.value = "⚠️ 이미지를 불러올 수 없습니다."
-                    status_text.color = "#d32f2f"
-                    page.update()
-                    return
+    page.on_java_script_message = on_image_received
 
-                img = Image.open(io.BytesIO(raw_bytes))
-                img.thumbnail((800, 800))
-                
-                buffer = io.BytesIO()
-                img.convert("RGB").save(buffer, format="JPEG", quality=85)
-                selected_image_bytes = buffer.getvalue()
+    # 📸 [갤러리 완전 제거] 오직 전면(셀카) 카메라만 즉시 실행하는 함수
+    def take_photo_only(e):
+        status_text.value = "카메라 실행 중..."
+        page.update()
 
-                img_preview.src_base64 = base64.b64encode(selected_image_bytes).decode('utf-8')
-                img_preview.src = None
-                status_text.value = "✅ 사진 준비 완료!"
-                status_text.color = "#2e7d32"
-            except Exception as err:
-                status_text.value = f"⚠️ 오류 발생: {str(err)}"
-                status_text.color = "#d32f2f"
-            page.update()
+        js_code = """
+        (function() {
+            var input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.setAttribute('capture', 'user'); // 갤러리 차단 / 전면 셀카 강제
+            
+            input.onchange = function(evt) {
+                var file = evt.target.files[0];
+                if (!file) return;
+                var reader = new FileReader();
+                reader.onload = function(e_reader) {
+                    window.flet_javaScriptMessage(JSON.stringify({
+                        "image": e_reader.target.result
+                    }));
+                };
+                reader.readAsDataURL(file);
+            };
 
-    file_picker.on_result = handle_file_result
+            input.click();
+        })();
+        """
 
-    # 3. run_javascript 없이 Flet 내장 기능으로만 파일/카메라 호출
+        # Flet 버전에 따라 에러 없이 자바스크립트를 실행하는 호환 구문
+        if hasattr(page, "execute_js"):
+            page.execute_js(js_code)
+        elif hasattr(page, "run_javascript"):
+            page.run_javascript(js_code)
+        else:
+            # 안전한 우회 실행
+            page.launch_url(f"javascript:{js_code.replace(chr(10), '').replace('  ', '')}")
+
     btn_take_photo = ft.ElevatedButton(
-        "📸 사진 찍기 / 이미지 선택",
+        "📸 지금 바로 셀카 찍기",
         icon="camera_alt",
-        on_click=lambda _: file_picker.pick_files(
-            allow_multiple=False,
-            file_type=ft.FilePickerFileType.IMAGE
-        ),
+        on_click=take_photo_only,
         bgcolor="#000000",
         color="#ffffff",
         width=360,
         height=50
     )
 
-    # URL 입력창 및 적용
+    # 보조용 URL 입력창
     img_url_input = ft.TextField(
         label="🖼️ 이미지 URL 주소 입력 (선택)",
         hint_text="https://...",
@@ -123,7 +146,7 @@ def main(page: ft.Page):
         content=ft.Column([
             ft.Text("📊 AI 외모 평가 결과", size=18, weight="bold", color="#000000"),
             ft.Divider(color="#eeeeee"),
-            ft.Text("사진을 등록하고 분석을 시작하세요.", size=14, color="#666666")
+            ft.Text("사진을 찍고 분석을 시작하세요.", size=14, color="#666666")
         ]),
         padding=20,
         bgcolor="#f0f0f0",
@@ -132,7 +155,7 @@ def main(page: ft.Page):
         width=360,
     )
 
-    # Gemini AI 분석 함수
+    # Gemini AI 분석
     def analyze_face(e):
         nonlocal selected_image_bytes
 
@@ -143,7 +166,7 @@ def main(page: ft.Page):
             return
 
         if not selected_image_bytes and not img_url_input.value:
-            status_text.value = "⚠️ 먼저 사진을 찍거나 URL을 입력해주세요!"
+            status_text.value = "⚠️ 먼저 셀카를 촬영하거나 URL을 입력해주세요!"
             status_text.color = "#d32f2f"
             page.update()
             return
