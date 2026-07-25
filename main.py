@@ -40,8 +40,8 @@ def main(page: ft.Page):
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
 
-    # Base64 이미지 데이터 수신 함수
-    def on_file_uploaded(e):
+    # Base64 사진 수신 및 미리보기 처리
+    def on_image_received(e):
         nonlocal selected_image_bytes
         if e.data:
             try:
@@ -57,44 +57,56 @@ def main(page: ft.Page):
 
                 img_preview.src_base64 = base64.b64encode(selected_image_bytes).decode('utf-8')
                 img_preview.src = None
-                status_text.value = "✅ 이미지 선택 완료!"
+                status_text.value = "📸 사진 준비 완료!"
                 status_text.color = "#2e7d32"
             except Exception as err:
-                status_text.value = f"⚠️ 이미지 처리 오류: {str(err)}"
+                status_text.value = f"⚠️ 이미지 처리 실패: {str(err)}"
                 status_text.color = "#d32f2f"
             page.update()
 
-    # FilePicker 대신 일반 TextField를 숨겨서 데이터 전송 통로로 사용
-    image_receiver = ft.TextField(visible=False, on_change=on_file_uploaded)
+    # 카메라 전송용 수신기
+    data_receiver = ft.TextField(visible=False, on_change=on_image_received)
 
-    # FilePicker를 쓰지 않는 브라우저 네이티브 파일 선택기
-    btn_pick_file = ft.ElevatedButton(
-        "📸 사진/셀카 선택하기",
+    # 📸 셀카 직접 촬영 버튼
+    btn_take_photo = ft.ElevatedButton(
+        "📸 셀카 바로 촬영하기",
         icon="camera_alt",
-        on_click=lambda _: page.launch_url(
-            "data:text/html;charset=utf-8,"
-            "<html><body><script>"
-            "var input=document.createElement('input');"
-            "input.type='file';"
-            "input.accept='image/*';"
-            "input.onchange=function(evt){"
-            "var file=evt.target.files[0];"
-            "if(!file)return;"
-            "var reader=new FileReader();"
-            "reader.onload=function(e){"
-            "window.opener.postMessage(e.target.result, '*');"
-            "window.close();"
-            "};"
-            "reader.readAsDataURL(file);"
-            "};"
-            "input.click();"
-            "</script></body></html>"
-        ),
+        on_click=lambda _: page.run_task(trigger_camera),
         bgcolor="#000000",
         color="#ffffff",
         width=360,
-        height=45
+        height=50
     )
+
+    async def trigger_camera():
+        # 웹 브라우저에서 카메라(user: 전면 셀카) 직접 연동
+        js_code = """
+        (function() {
+            var input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.capture = 'user'; // 스마트폰 셀카 카메라 직접 실행
+            input.onchange = function(evt) {
+                var file = evt.target.files[0];
+                if (!file) return;
+                var reader = new FileReader();
+                reader.onload = function(e_reader) {
+                    var inputs = document.querySelectorAll('input');
+                    for (var i = 0; i < inputs.length; i++) {
+                        if (inputs[i].style.display === 'none' || inputs[i].type === 'hidden') {
+                            var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                            nativeSetter.call(inputs[i], e_reader.target.result);
+                            inputs[i].dispatchEvent(new Event('input', { bubbles: true }));
+                            break;
+                        }
+                    }
+                };
+                reader.readAsDataURL(file);
+            };
+            input.click();
+        })()
+        """
+        page.run_javascript(js_code)
 
     # URL 입력창
     img_url_input = ft.TextField(
@@ -123,7 +135,7 @@ def main(page: ft.Page):
         content=ft.Column([
             ft.Text("📊 AI 외모 평가 결과", size=18, weight="bold", color="#000000"),
             ft.Divider(color="#eeeeee"),
-            ft.Text("사진을 선택하고 분석을 시작하세요.", size=14, color="#666666")
+            ft.Text("사진을 찍고 분석을 시작하세요.", size=14, color="#666666")
         ]),
         padding=20,
         bgcolor="#f0f0f0",
@@ -143,7 +155,7 @@ def main(page: ft.Page):
             return
 
         if not selected_image_bytes and not img_url_input.value:
-            status_text.value = "⚠️ 먼저 사진을 고르거나 URL을 입력해주세요!"
+            status_text.value = "⚠️ 먼저 셀카를 촬영하거나 URL을 입력해주세요!"
             status_text.color = "#d32f2f"
             page.update()
             return
@@ -223,7 +235,7 @@ def main(page: ft.Page):
     )
 
     page.add(
-        image_receiver,
+        data_receiver,
         ft.Column([
             header_title,
             header_sub,
@@ -231,7 +243,7 @@ def main(page: ft.Page):
             api_key_input,
             ft.Container(height=5),
             img_preview,
-            btn_pick_file,
+            btn_take_photo,
             ft.Row([img_url_input, btn_apply_url], width=360, alignment="center"),
             ft.Container(height=10),
             btn_scan,
@@ -241,4 +253,4 @@ def main(page: ft.Page):
         ], horizontal_alignment="center", spacing=10)
     )
 
-ft.app(target=main, view=ft.AppView.WEB_BROWSER, assets_dir="assets")
+ft.app(target=main, view=ft.AppView.WEB_BROWSER)
