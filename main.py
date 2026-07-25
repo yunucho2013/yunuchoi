@@ -40,29 +40,14 @@ def main(page: ft.Page):
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
 
-    # 1. 가장 순수한 FilePicker 생성 (버전 충돌 요소 제거)
-    file_picker = ft.FilePicker()
-    page.overlay.append(file_picker)  # 웹 환경 필수 등록
-
-    # 파일 선택 완료 시 실행
-    def handle_file_result(e: ft.FilePickerResultEvent):
+    # Base64 이미지 데이터 수신 함수
+    def on_file_uploaded(e):
         nonlocal selected_image_bytes
-        if e.files and len(e.files) > 0:
+        if e.data:
             try:
-                # 업로드된 파일 바이너리 처리
-                uf = e.files[0]
-                status_text.value = f"📸 {uf.name} 불러오는 중..."
-                page.update()
-
-                # 파일 열기 (웹 및 서버 공통 지원)
-                if uf.path:
-                    with open(uf.path, "rb") as f:
-                        raw_bytes = f.read()
-                else:
-                    status_text.value = "⚠️ 이미지 읽기 실패"
-                    page.update()
-                    return
-
+                b64_data = e.data.split(",")[-1] if "," in e.data else e.data
+                raw_bytes = base64.b64decode(b64_data)
+                
                 img = Image.open(io.BytesIO(raw_bytes))
                 img.thumbnail((800, 800))
                 
@@ -75,18 +60,35 @@ def main(page: ft.Page):
                 status_text.value = "✅ 이미지 선택 완료!"
                 status_text.color = "#2e7d32"
             except Exception as err:
-                status_text.value = f"⚠️ 사진 처리 오류: {str(err)}"
+                status_text.value = f"⚠️ 이미지 처리 오류: {str(err)}"
                 status_text.color = "#d32f2f"
             page.update()
 
-    file_picker.on_result = handle_file_result
+    # FilePicker 대신 일반 TextField를 숨겨서 데이터 전송 통로로 사용
+    image_receiver = ft.TextField(visible=False, on_change=on_file_uploaded)
 
+    # FilePicker를 쓰지 않는 브라우저 네이티브 파일 선택기
     btn_pick_file = ft.ElevatedButton(
         "📸 사진/셀카 선택하기",
         icon="camera_alt",
-        on_click=lambda _: file_picker.pick_files(
-            allow_multiple=False,
-            file_type=ft.FilePickerFileType.IMAGE
+        on_click=lambda _: page.launch_url(
+            "data:text/html;charset=utf-8,"
+            "<html><body><script>"
+            "var input=document.createElement('input');"
+            "input.type='file';"
+            "input.accept='image/*';"
+            "input.onchange=function(evt){"
+            "var file=evt.target.files[0];"
+            "if(!file)return;"
+            "var reader=new FileReader();"
+            "reader.onload=function(e){"
+            "window.opener.postMessage(e.target.result, '*');"
+            "window.close();"
+            "};"
+            "reader.readAsDataURL(file);"
+            "};"
+            "input.click();"
+            "</script></body></html>"
         ),
         bgcolor="#000000",
         color="#ffffff",
@@ -221,6 +223,7 @@ def main(page: ft.Page):
     )
 
     page.add(
+        image_receiver,
         ft.Column([
             header_title,
             header_sub,
