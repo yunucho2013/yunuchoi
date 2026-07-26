@@ -62,7 +62,7 @@ def main(page: ft.Page):
 
                     img_preview.src_base64 = base64.b64encode(selected_image_bytes).decode('utf-8')
                     img_preview.src = None
-                    status_text.value = "📸 셀카 촬영 완료!"
+                    status_text.value = "📸 사진 적용 완료!"
                     status_text.color = "#2e7d32"
                 page.update()
             except Exception as err:
@@ -72,18 +72,12 @@ def main(page: ft.Page):
 
     page.on_java_script_message = on_image_received
 
-    # 브라우저 페이지 로드 시 카메라 스크립트를 미리 주입
-    def page_resized(e):
-        pass # 기본 이벤트 핸들러 유지
-
-    page.on_resize = page_resized
-
-    # 📸 셀카 실행 함수
+    # 📸 PC/모바일 자동 대응 크로스 플랫폼 카메라 호출
     def take_photo_only(e):
-        status_text.value = "📸 셀카 카메라 열기..."
+        status_text.value = "📸 카메라/파일 창 열기..."
         page.update()
 
-        # 브라우저에서 즉시 카메라 input을 생성하고 클릭
+        # PC에서는 일반 이미지 창, 모바일에서는 카메라가 우선 열리도록 처리
         trigger_script = """
         var oldInput = document.getElementById('cam-input-field');
         if(oldInput) oldInput.remove();
@@ -92,7 +86,13 @@ def main(page: ft.Page):
         input.id = 'cam-input-field';
         input.type = 'file';
         input.accept = 'image/*';
-        input.setAttribute('capture', 'user');
+        
+        // 모바일 기기(Android/iOS)인 경우에만 capture 속성 추가하여 무한 로딩 방지
+        var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (isMobile) {
+            input.setAttribute('capture', 'user');
+        }
+
         input.style.display = 'none';
 
         input.onchange = function(evt) {
