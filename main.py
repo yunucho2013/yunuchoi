@@ -1,6 +1,7 @@
 import flet as ft
 import base64
 import io
+import json
 from PIL import Image
 from google import genai
 from google.genai import types
@@ -30,7 +31,7 @@ def main(page: ft.Page):
     )
 
     img_preview = ft.Image(
-        src="https://via.placeholder.com/300x300/f0f0f0/000000?text=Take+a+Photo",
+        src="https://via.placeholder.com/300x300/f0f0f0/000000?text=Select+or+Take+Photo",
         width=250,
         height=250,
         fit="cover",
@@ -40,67 +41,57 @@ def main(page: ft.Page):
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
 
-    # 1. Flet 정식 FilePicker 생성 (무한 로딩 절대 없음)
-    file_picker = ft.FilePicker()
-    page.overlay.append(file_picker)
-
-    # 2. 파일 선택 완료 시 실행되는 이벤트
-    def handle_file_result(e: ft.FilePickerResultEvent):
+    # 브라우저에서 보낸 사진 데이터를 수신하는 리스너
+    def on_image_received(e):
         nonlocal selected_image_bytes
-        if e.files and len(e.files) > 0:
+        if e.data:
             try:
-                file_info = e.files[0]
-                status_text.value = "📸 사진 불러오는 중..."
+                data = json.loads(e.data)
+                b64_string = data.get("image", "")
+                
+                if b64_string:
+                    b64_data = b64_string.split(",")[-1] if "," in b64_string else b64_string
+                    raw_bytes = base64.b64decode(b64_data)
+                    
+                    img = Image.open(io.BytesIO(raw_bytes))
+                    img.thumbnail((800, 800))
+                    
+                    buffer = io.BytesIO()
+                    img.convert("RGB").save(buffer, format="JPEG", quality=85)
+                    selected_image_bytes = buffer.getvalue()
+
+                    img_preview.src_base64 = base64.b64encode(selected_image_bytes).decode('utf-8')
+                    img_preview.src = None
+                    status_text.value = "📸 사진 불러오기 완료!"
+                    status_text.color = "#2e7d32"
+                page.update()
+            except Exception as err:
+                status_text.value = f"⚠️ 이미지 처리 실패: {str(err)}"
+                status_text.color = "#d32f2f"
                 page.update()
 
-                # 파일 바이트 데이터 가져오기
-                if file_info.bytes:
-                    raw_bytes = file_info.bytes
-                elif file_info.path:
-                    with open(file_info.path, "rb") as f:
-                        raw_bytes = f.read()
-                else:
-                    status_text.value = "⚠️ 이미지를 불러올 수 없습니다."
-                    status_text.color = "#d32f2f"
-                    page.update()
-                    return
+    page.on_java_script_message = on_image_received
 
-                # 이미지 리사이징 처리
-                img = Image.open(io.BytesIO(raw_bytes))
-                img.thumbnail((800, 800))
-                
-                buffer = io.BytesIO()
-                img.convert("RGB").save(buffer, format="JPEG", quality=85)
-                selected_image_bytes = buffer.getvalue()
-
-                img_preview.src_base64 = base64.b64encode(selected_image_bytes).decode('utf-8')
-                img_preview.src = None
-                status_text.value = "✅ 사진 준비 완료!"
-                status_text.color = "#2e7d32"
-            except Exception as err:
-                status_text.value = f"⚠️ 오류 발생: {str(err)}"
-                status_text.color = "#d32f2f"
-            page.update()
-
-    file_picker.on_result = handle_file_result
-
-    # 3. 버튼 클릭 시 Flet 내장 FilePicker 호출
-    def open_camera_or_file(e):
-        status_text.value = "📸 사진 선택 창 열는 중..."
-        page.update()
-        file_picker.pick_files(
-            allow_multiple=False,
-            file_type=ft.FilePickerFileType.IMAGE
-        )
-
-    btn_take_photo = ft.ElevatedButton(
-        "📸 지금 바로 셀카 찍기",
-        icon="camera_alt",
-        on_click=open_camera_or_file,
-        bgcolor="#000000",
-        color="#ffffff",
-        width=360,
-        height=50
+    # Flet 에러를 우회하는 순수 HTML 파일/카메라 선택 HTML 엘리먼트
+    raw_html_button = ft.Html(
+        content="""
+        <div style="text-align: center;">
+            <input type="file" id="pure-cam-input" accept="image/*" style="display:none;" onchange="
+                var file = this.files[0];
+                if (!file) return;
+                var reader = new FileReader();
+                reader.onload = function(e) {
+                    window.flet_javaScriptMessage(JSON.stringify({'image': e.target.result}));
+                };
+                reader.readAsDataURL(file);
+            ">
+            <button onclick="document.getElementById('pure-cam-input').click();" 
+                    style="width: 360px; height: 50px; background-color: #000000; color: #ffffff; 
+                           font-weight: bold; font-size: 16px; border: none; border-radius: 8px; cursor: pointer;">
+                📸 사진 촬영 / 선택하기
+            </button>
+        </div>
+        """
     )
 
     # 보조 URL 입력창
@@ -130,7 +121,7 @@ def main(page: ft.Page):
         content=ft.Column([
             ft.Text("📊 AI 외모 평가 결과", size=18, weight="bold", color="#000000"),
             ft.Divider(color="#eeeeee"),
-            ft.Text("사진을 찍고 분석을 시작하세요.", size=14, color="#666666")
+            ft.Text("사진을 적용하고 분석을 시작하세요.", size=14, color="#666666")
         ]),
         padding=20,
         bgcolor="#f0f0f0",
@@ -150,7 +141,7 @@ def main(page: ft.Page):
             return
 
         if not selected_image_bytes and not img_url_input.value:
-            status_text.value = "⚠️ 먼저 셀카를 촬영하거나 URL을 입력해주세요!"
+            status_text.value = "⚠️ 먼저 사진을 촬영하거나 URL을 입력해주세요!"
             status_text.color = "#d32f2f"
             page.update()
             return
@@ -238,7 +229,7 @@ def main(page: ft.Page):
             ft.Container(height=5),
             img_preview,
             ft.Container(height=5),
-            btn_take_photo,
+            raw_html_button, # 순수 HTML 기반 버튼 배치
             ft.Row([img_url_input, btn_apply_url], width=360, alignment="center"),
             ft.Container(height=10),
             btn_scan,
