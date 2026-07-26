@@ -41,7 +41,7 @@ def main(page: ft.Page):
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
 
-    # 📸 셀카 전용 사진 데이터 수신기
+    # 📸 셀카 사진 전송 수신부
     def on_image_received(e):
         nonlocal selected_image_bytes
         if e.data:
@@ -66,48 +66,51 @@ def main(page: ft.Page):
                     status_text.color = "#2e7d32"
                 page.update()
             except Exception as err:
-                status_text.value = f"⚠️ 촬영 실패: {str(err)}"
+                status_text.value = f"⚠️ 이미지 수신 실패: {str(err)}"
                 status_text.color = "#d32f2f"
                 page.update()
 
     page.on_java_script_message = on_image_received
 
-    # 📸 [갤러리 완전 제거] 오직 전면(셀카) 카메라만 즉시 실행하는 함수
+    # 브라우저 페이지 로드 시 카메라 스크립트를 미리 주입
+    def page_resized(e):
+        pass # 기본 이벤트 핸들러 유지
+
+    page.on_resize = page_resized
+
+    # 📸 셀카 실행 함수
     def take_photo_only(e):
-        status_text.value = "카메라 실행 중..."
+        status_text.value = "📸 셀카 카메라 열기..."
         page.update()
 
-        js_code = """
-        (function() {
-            var input = document.createElement('input');
-            input.type = 'file';
-            input.accept = 'image/*';
-            input.setAttribute('capture', 'user'); // 갤러리 차단 / 전면 셀카 강제
-            
-            input.onchange = function(evt) {
-                var file = evt.target.files[0];
-                if (!file) return;
-                var reader = new FileReader();
-                reader.onload = function(e_reader) {
-                    window.flet_javaScriptMessage(JSON.stringify({
-                        "image": e_reader.target.result
-                    }));
-                };
-                reader.readAsDataURL(file);
+        # 브라우저에서 즉시 카메라 input을 생성하고 클릭
+        trigger_script = """
+        var oldInput = document.getElementById('cam-input-field');
+        if(oldInput) oldInput.remove();
+
+        var input = document.createElement('input');
+        input.id = 'cam-input-field';
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.setAttribute('capture', 'user');
+        input.style.display = 'none';
+
+        input.onchange = function(evt) {
+            var file = evt.target.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function(e_reader) {
+                window.flet_javaScriptMessage(JSON.stringify({
+                    "image": e_reader.target.result
+                }));
             };
+            reader.readAsDataURL(file);
+        };
 
-            input.click();
-        })();
+        document.body.appendChild(input);
+        input.click();
         """
-
-        # Flet 버전에 따라 에러 없이 자바스크립트를 실행하는 호환 구문
-        if hasattr(page, "execute_js"):
-            page.execute_js(js_code)
-        elif hasattr(page, "run_javascript"):
-            page.run_javascript(js_code)
-        else:
-            # 안전한 우회 실행
-            page.launch_url(f"javascript:{js_code.replace(chr(10), '').replace('  ', '')}")
+        page.launch_url(f"javascript:(function(){{{trigger_script}}})()")
 
     btn_take_photo = ft.ElevatedButton(
         "📸 지금 바로 셀카 찍기",
@@ -119,7 +122,7 @@ def main(page: ft.Page):
         height=50
     )
 
-    # 보조용 URL 입력창
+    # 보조 URL 입력창
     img_url_input = ft.TextField(
         label="🖼️ 이미지 URL 주소 입력 (선택)",
         hint_text="https://...",
