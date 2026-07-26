@@ -1,7 +1,6 @@
 import flet as ft
 import base64
 import io
-import json
 from PIL import Image
 from google import genai
 from google.genai import types
@@ -31,7 +30,7 @@ def main(page: ft.Page):
     )
 
     img_preview = ft.Image(
-        src="https://via.placeholder.com/300x300/f0f0f0/000000?text=Take+a+Selfie",
+        src="https://via.placeholder.com/300x300/f0f0f0/000000?text=Take+a+Photo",
         width=250,
         height=250,
         fit="cover",
@@ -41,81 +40,63 @@ def main(page: ft.Page):
     status_text = ft.Text("", size=14, color="#000000", weight="bold")
     progress_ring = ft.ProgressRing(visible=False, color="#000000")
 
-    # 📸 셀카 사진 전송 수신부
-    def on_image_received(e):
+    # 1. Flet 정식 FilePicker 생성 (무한 로딩 절대 없음)
+    file_picker = ft.FilePicker()
+    page.overlay.append(file_picker)
+
+    # 2. 파일 선택 완료 시 실행되는 이벤트
+    def handle_file_result(e: ft.FilePickerResultEvent):
         nonlocal selected_image_bytes
-        if e.data:
+        if e.files and len(e.files) > 0:
             try:
-                data = json.loads(e.data)
-                b64_string = data.get("image", "")
+                file_info = e.files[0]
+                status_text.value = "📸 사진 불러오는 중..."
+                page.update()
+
+                # 파일 바이트 데이터 가져오기
+                if file_info.bytes:
+                    raw_bytes = file_info.bytes
+                elif file_info.path:
+                    with open(file_info.path, "rb") as f:
+                        raw_bytes = f.read()
+                else:
+                    status_text.value = "⚠️ 이미지를 불러올 수 없습니다."
+                    status_text.color = "#d32f2f"
+                    page.update()
+                    return
+
+                # 이미지 리사이징 처리
+                img = Image.open(io.BytesIO(raw_bytes))
+                img.thumbnail((800, 800))
                 
-                if b64_string:
-                    b64_data = b64_string.split(",")[-1] if "," in b64_string else b64_string
-                    raw_bytes = base64.b64decode(b64_data)
-                    
-                    img = Image.open(io.BytesIO(raw_bytes))
-                    img.thumbnail((800, 800))
-                    
-                    buffer = io.BytesIO()
-                    img.convert("RGB").save(buffer, format="JPEG", quality=85)
-                    selected_image_bytes = buffer.getvalue()
+                buffer = io.BytesIO()
+                img.convert("RGB").save(buffer, format="JPEG", quality=85)
+                selected_image_bytes = buffer.getvalue()
 
-                    img_preview.src_base64 = base64.b64encode(selected_image_bytes).decode('utf-8')
-                    img_preview.src = None
-                    status_text.value = "📸 사진 적용 완료!"
-                    status_text.color = "#2e7d32"
-                page.update()
+                img_preview.src_base64 = base64.b64encode(selected_image_bytes).decode('utf-8')
+                img_preview.src = None
+                status_text.value = "✅ 사진 준비 완료!"
+                status_text.color = "#2e7d32"
             except Exception as err:
-                status_text.value = f"⚠️ 이미지 수신 실패: {str(err)}"
+                status_text.value = f"⚠️ 오류 발생: {str(err)}"
                 status_text.color = "#d32f2f"
-                page.update()
+            page.update()
 
-    page.on_java_script_message = on_image_received
+    file_picker.on_result = handle_file_result
 
-    # 📸 PC/모바일 자동 대응 크로스 플랫폼 카메라 호출
-    def take_photo_only(e):
-        status_text.value = "📸 카메라/파일 창 열기..."
+    # 3. 버튼 클릭 시 Flet 내장 FilePicker 호출
+    def open_camera_or_file(e):
+        status_text.value = "📸 사진 선택 창 열는 중..."
         page.update()
-
-        # PC에서는 일반 이미지 창, 모바일에서는 카메라가 우선 열리도록 처리
-        trigger_script = """
-        var oldInput = document.getElementById('cam-input-field');
-        if(oldInput) oldInput.remove();
-
-        var input = document.createElement('input');
-        input.id = 'cam-input-field';
-        input.type = 'file';
-        input.accept = 'image/*';
-        
-        // 모바일 기기(Android/iOS)인 경우에만 capture 속성 추가하여 무한 로딩 방지
-        var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        if (isMobile) {
-            input.setAttribute('capture', 'user');
-        }
-
-        input.style.display = 'none';
-
-        input.onchange = function(evt) {
-            var file = evt.target.files[0];
-            if (!file) return;
-            var reader = new FileReader();
-            reader.onload = function(e_reader) {
-                window.flet_javaScriptMessage(JSON.stringify({
-                    "image": e_reader.target.result
-                }));
-            };
-            reader.readAsDataURL(file);
-        };
-
-        document.body.appendChild(input);
-        input.click();
-        """
-        page.launch_url(f"javascript:(function(){{{trigger_script}}})()")
+        file_picker.pick_files(
+            allow_multiple=False,
+            file_type=ft.FilePickerFileType.IMAGE
+        )
 
     btn_take_photo = ft.ElevatedButton(
         "📸 지금 바로 셀카 찍기",
         icon="camera_alt",
-        on_click=take_photo_only,
+        on_click=open_camera_or_file,
         bgcolor="#000000",
         color="#ffffff",
         width=360,
